@@ -11,7 +11,6 @@
 
         body { font-family: 'Inter', sans-serif; overflow: hidden; user-select: none; }
         
-        /* Widget Container */
         .widget {
             position: absolute; display: flex; flex-direction: column;
             background: rgba(255, 255, 255, 0.95); border-radius: 12px;
@@ -31,7 +30,6 @@
         
         .widget-content { flex: 1; position: relative; overflow: hidden; display: flex; flex-direction: column; }
         
-        /* 3D Flip */
         .flip-container { perspective: 1000px; width: 100%; height: 100%; position: relative; }
         .flipper { transition: 0.6s; transform-style: preserve-3d; position: relative; width: 100%; height: 100%; }
         .flip-active { transform: rotateY(180deg); }
@@ -41,7 +39,6 @@
         }
         .back { transform: rotateY(180deg); background: #f1f5f9; padding: 1rem; overflow-y: auto; }
 
-        /* UI Elements */
         .resize-handle { width: 15px; height: 15px; position: absolute; bottom: 0; right: 0; cursor: se-resize; z-index: 10; }
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
@@ -59,15 +56,21 @@
             display: flex; flex-direction: column; align-items: center; justify-content: center;
             text-align: center; padding: 1rem;
         }
+        #save-indicator {
+            position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
+            background-color: #22c55e; color: white; padding: 10px 20px;
+            border-radius: 8px; font-weight: bold; z-index: 100;
+            opacity: 0; transition: opacity 0.5s;
+        }
     </style>
 </head>
 <body class="bg-slate-900 h-screen w-screen overflow-hidden transition-colors duration-500" id="app-body">
 
-    <!-- Widget Layer -->
     <div id="app-container" class="w-full h-full relative z-0"></div>
 
-    <!-- Bottom Dock -->
     <div class="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50 bg-white/90 backdrop-blur shadow-2xl rounded-2xl px-3 py-2 border border-white/50 flex gap-1.5 items-center transition-all hover:scale-105 overflow-x-auto max-w-[95vw]">
+        <button id="btn-save" class="p-2.5 rounded-xl hover:bg-blue-100 text-blue-600" title="Save Dashboard"><i class="fa-solid fa-save fa-lg"></i></button>
+        <div class="w-px h-6 bg-gray-300 mx-1"></div>
         <button data-widget="clock" class="dock-btn p-2.5 rounded-xl hover:bg-slate-100 text-slate-700" title="Clock"><i class="fa-regular fa-clock fa-lg"></i></button>
         <button data-widget="timer" class="dock-btn p-2.5 rounded-xl hover:bg-indigo-50 text-indigo-600" title="Timer"><i class="fa-solid fa-stopwatch fa-lg"></i></button>
         <button data-widget="traffic" class="dock-btn p-2.5 rounded-xl hover:bg-red-50 text-red-500" title="Traffic Light"><i class="fa-solid fa-traffic-light fa-lg"></i></button>
@@ -87,7 +90,6 @@
         <button id="btn-bg-menu" class="dock-btn p-2.5 rounded-xl hover:bg-gray-100 text-gray-600" title="Backgrounds"><i class="fa-solid fa-image fa-lg"></i></button>
     </div>
 
-    <!-- Background Menu -->
     <div id="bg-menu" class="fixed bottom-24 right-4 bg-white rounded-xl shadow-xl p-4 hidden z-50 w-64 grid grid-cols-2 gap-2">
         <button data-bg="bg-slate-900" class="bg-opt h-16 rounded-lg bg-slate-900 border-2 border-transparent hover:border-indigo-500"></button>
         <button data-bg="bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500" class="bg-opt h-16 rounded-lg bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 border-2 border-transparent hover:border-white"></button>
@@ -96,6 +98,8 @@
         <button data-bg="bg-orange-100" class="bg-opt h-16 rounded-lg bg-orange-100 border-2 border-transparent hover:border-indigo-500"></button>
         <div data-bg="bg-grid" class="bg-opt h-16 rounded-lg bg-slate-50 border-2 border-transparent hover:border-indigo-500 flex items-center justify-center text-slate-400 cursor-pointer" style="background-image: radial-gradient(#94a3b8 1px, transparent 1px); background-size: 10px 10px;"><i class="fa-solid fa-border-all"></i></div>
     </div>
+    
+    <div id="save-indicator">Saved!</div>
 
     <!-- TEMPLATES -->
     <template id="tpl-window-frame">
@@ -350,7 +354,7 @@
         let initialMouseX, initialMouseY;
         let initialX, initialY, initialW, initialH;
         const GRID = 40;
-        const polls = {};
+        let polls = {};
 
         // Main Initialization
         document.addEventListener('DOMContentLoaded', () => {
@@ -363,7 +367,7 @@
             const bgMenuBtn = document.getElementById('btn-bg-menu');
             const bgMenu = document.getElementById('bg-menu');
             bgMenuBtn.addEventListener('click', () => bgMenu.classList.toggle('hidden'));
-
+            
             document.querySelectorAll('.bg-opt').forEach(btn => {
                 btn.addEventListener('click', () => setBg(btn.dataset.bg));
             });
@@ -371,13 +375,20 @@
             // Global Events
             document.addEventListener('mousemove', handleMove);
             document.addEventListener('mouseup', handleEnd);
+
+            // Save/Load
+            document.getElementById('btn-save').addEventListener('click', saveState);
+            loadState();
         });
 
-        function spawnWidget(type) {
-            const id = nextId++;
+        function spawnWidget(type, state = null) {
+            const id = state ? state.id : nextId++;
+            if (!state) { // If it is a new widget, increment nextId
+               if(id >= nextId) nextId = id + 1;
+            }
+            
             const config = getWidgetConfig(type);
             
-            // Clone Frame
             const frameTpl = document.getElementById('tpl-window-frame');
             if(!frameTpl) return console.error("Missing Frame Template");
             
@@ -386,18 +397,24 @@
             el.className = 'widget';
             el.id = 'widget-' + id;
             
-            // Initial Position
-            el.style.width = config.w + 'px';
-            el.style.height = config.h + 'px';
-            el.style.left = (window.innerWidth / 2 - config.w / 2) + 'px';
-            el.style.top = (window.innerHeight / 2 - config.h / 2) + 'px';
-            el.style.zIndex = getMaxZ() + 1;
+            if (state) {
+                el.style.left = state.x + 'px';
+                el.style.top = state.y + 'px';
+                el.style.width = state.w + 'px';
+                el.style.height = state.h + 'px';
+                el.style.zIndex = state.z;
+                if(state.minimized) el.classList.add('minimized');
+            } else {
+                 el.style.width = config.w + 'px';
+                 el.style.height = config.h + 'px';
+                 el.style.left = (window.innerWidth / 2 - config.w / 2) + 'px';
+                 el.style.top = (window.innerHeight / 2 - config.h / 2) + 'px';
+                 el.style.zIndex = getMaxZ() + 1;
+            }
 
-            // Fill Skeleton
             skeleton.querySelector('.widget-title-text').textContent = config.title;
             skeleton.querySelector('.widget-icon').className = config.icon;
             
-            // Bind Window Actions
             const header = skeleton.querySelector('.widget-header');
             header.addEventListener('mousedown', (e) => startDrag(e, id));
             
@@ -407,8 +424,10 @@
             skeleton.querySelector('.btn-close').addEventListener('click', () => closeWidget(id));
             skeleton.querySelector('.resize-handle').addEventListener('mousedown', (e) => startResize(e, id));
             
-            // Setup IDs
-            skeleton.querySelector('.flipper').id = 'flipper-' + id;
+            const flipper = skeleton.querySelector('.flipper');
+            flipper.id = 'flipper-' + id;
+            if(state && state.settings) flipper.classList.add('flip-active');
+
             const contentArea = skeleton.querySelector('.widget-content');
             contentArea.id = 'content-' + id;
             const settingsArea = skeleton.querySelector('.settings-container');
@@ -417,7 +436,6 @@
             el.appendChild(skeleton);
             document.getElementById('app-container').appendChild(el);
 
-            // Load Specific Logic
             const typeTpl = document.getElementById('tpl-' + type);
             if(typeTpl) {
                 const clone = typeTpl.content.cloneNode(true);
@@ -426,9 +444,11 @@
                 contentArea.appendChild(clone);
             }
 
-            const widget = { id, type, el, state: {} };
+            const widget = { id, type, el };
             widgets.push(widget);
-            initWidgetLogic(widget);
+            initWidgetLogic(widget, state ? state.data : null);
+
+            return widget;
         }
 
         function getWidgetConfig(type) {
@@ -451,16 +471,20 @@
             return defaults[type] || { w: 300, h: 200, title: 'Widget', icon: 'fa-solid fa-cube' };
         }
 
-        function initWidgetLogic(w) {
+        function initWidgetLogic(w, state) {
             const root = w.el;
 
-            // --- Clock ---
             if (w.type === 'clock') {
                 const timeEl = root.querySelector('[data-id="time"]');
                 const dateEl = root.querySelector('[data-id="date"]');
                 const inp24h = root.querySelector('.inp-24h');
                 const inpSec = root.querySelector('.inp-sec');
                 
+                if(state){
+                    inp24h.checked = state.is24h;
+                    inpSec.checked = state.showSeconds;
+                }
+
                 const update = () => {
                     if(!root.isConnected) return;
                     const now = new Date();
@@ -471,15 +495,25 @@
                     requestAnimationFrame(update);
                 };
                 update();
+
+                w.getState = () => ({
+                    is24h: inp24h.checked,
+                    showSeconds: inpSec.checked
+                });
             }
 
-            // --- Timer ---
             if (w.type === 'timer') {
                 let interval;
-                let time = 300; 
+                let time = state ? state.initialTime : 300;
                 const display = root.querySelector('[data-id="display"]');
                 const inpMin = root.querySelector('.inp-min');
-                
+                const inpSound = root.querySelector('.inp-sound');
+
+                if(state){
+                    inpMin.value = time / 60;
+                    inpSound.checked = state.playSound;
+                }
+
                 const updateDisplay = () => {
                     const m = Math.floor(time / 60).toString().padStart(2, '0');
                     const s = (time % 60).toString().padStart(2, '0');
@@ -494,7 +528,7 @@
                             updateDisplay();
                         } else {
                             clearInterval(interval);
-                            if(root.querySelector('.inp-sound').checked) playAlarm();
+                            if(inpSound.checked) playAlarm();
                             display.classList.add('text-red-500', 'animate-pulse');
                         }
                     }, 1000);
@@ -511,57 +545,107 @@
                    updateDisplay();
                 });
                 updateDisplay();
-            }
 
-            // --- Traffic ---
-            if (w.type === 'traffic') {
-                root.querySelectorAll('.traffic-light').forEach(light => {
-                    light.addEventListener('click', () => {
-                        root.querySelectorAll('.traffic-light').forEach(l => l.classList.remove('active'));
-                        light.classList.add('active');
-                    });
+                 w.getState = () => ({
+                    initialTime: parseInt(inpMin.value) * 60,
+                    playSound: inpSound.checked
                 });
             }
 
-            // --- Text Note ---
+            if (w.type === 'traffic') {
+                const lights = root.querySelectorAll('.traffic-light');
+                if(state) {
+                    lights.forEach(l => l.classList.remove('active'));
+                    if(state.active) {
+                       const activeLight = root.querySelector(`.traffic-light[data-color="${state.active}"]`);
+                       if(activeLight) activeLight.classList.add('active');
+                    }
+                }
+                lights.forEach(light => {
+                    light.addEventListener('click', () => {
+                        lights.forEach(l => l.classList.remove('active'));
+                        light.classList.add('active');
+                    });
+                });
+                
+                w.getState = () => {
+                    const activeLight = root.querySelector('.traffic-light.active');
+                    return { active: activeLight ? activeLight.dataset.color : null };
+                };
+            }
+
             if (w.type === 'text') {
                 const area = root.querySelector('.widget-content div');
                 const slider = root.querySelector('.inp-size');
+                const contentArea = root.querySelector('.widget-content');
+
+                if(state){
+                    area.innerHTML = state.content;
+                    area.style.fontSize = state.fontSize + 'px';
+                    slider.value = state.fontSize;
+                    contentArea.style.backgroundColor = state.bgColor;
+                }
+
                 slider.addEventListener('input', () => {
                     area.style.fontSize = slider.value + 'px';
                 });
                 
                 root.querySelectorAll('.bg-picker').forEach(btn => {
                     btn.addEventListener('click', () => {
-                         // Need to find content in THIS widget
-                         const content = document.getElementById('content-'+w.id);
-                         content.style.backgroundColor = btn.dataset.color;
+                         contentArea.style.backgroundColor = btn.dataset.color;
                     });
+                });
+
+                w.getState = () => ({
+                    content: area.innerHTML,
+                    fontSize: slider.value,
+                    bgColor: contentArea.style.backgroundColor
                 });
             }
 
-            // --- Checklist ---
             if (w.type === 'checklist') {
                 const container = root.querySelector('.check-list-container');
                 const textarea = root.querySelector('.inp-list');
                 const btn = root.querySelector('.btn-update');
 
-                btn.addEventListener('click', () => {
-                    const items = textarea.value.split('\n').filter(x => x.trim());
+                const renderList = (items) => {
                     container.innerHTML = '';
+                    if (!items || items.length === 0) {
+                         container.innerHTML = '<div class="text-slate-400 text-sm italic">Add items in settings...</div>';
+                         return;
+                    }
                     items.forEach((item, i) => {
                         const div = document.createElement('div');
                         div.className = 'check-item flex items-start gap-2 mb-2 p-1 hover:bg-slate-50 rounded';
-                        div.innerHTML = '<input type="checkbox" class="mt-1 accent-indigo-600" id="chk-' + w.id + '-' + i + '">' +
-                                        '<span class="flex-1 text-slate-700 break-words">' + item + '</span>';
+                        div.innerHTML = `<input type="checkbox" class="mt-1 accent-indigo-600" id="chk-${w.id}-${i}" ${item.checked ? 'checked' : ''}>` +
+                                        `<span class="flex-1 text-slate-700 break-words">${item.text}</span>`;
                         container.appendChild(div);
                     });
-                    if(items.length === 0) container.innerHTML = '<div class="text-slate-400 text-sm italic">Add items in settings...</div>';
+                }
+                
+                if(state){
+                    textarea.value = state.items.map(i => i.text).join('\n');
+                    renderList(state.items);
+                }
+
+                btn.addEventListener('click', () => {
+                    const items = textarea.value.split('\n').filter(x => x.trim()).map(text => ({text, checked: false}));
+                    renderList(items);
                     toggleSettings(w.id);
                 });
+
+                 w.getState = () => {
+                    const items = [];
+                     root.querySelectorAll('.check-item').forEach(itemEl => {
+                        items.push({
+                            text: itemEl.querySelector('span').textContent,
+                            checked: itemEl.querySelector('input').checked
+                        });
+                    });
+                    return { items };
+                };
             }
 
-            // --- Random Name ---
             if (w.type === 'random') {
                 const btn = root.querySelector('.btn-pick');
                 const resultContainer = root.querySelector('.result-container');
@@ -570,6 +654,12 @@
                 const modeSelect = root.querySelector('.inp-mode');
                 const groupSizeInput = root.querySelector('.inp-group-size');
                 const groupSizeDiv = root.querySelector('.div-group-size');
+
+                if(state){
+                    listInput.value = state.list;
+                    modeSelect.value = state.mode;
+                    groupSizeInput.value = state.groupSize;
+                }
 
                 modeSelect.addEventListener('change', () => {
                     const mode = modeSelect.value;
@@ -584,18 +674,17 @@
                         btn.textContent = 'Pick Student';
                     }
                 });
+                modeSelect.dispatchEvent(new Event('change'));
                 
                 btn.addEventListener('click', () => {
                     let names = listInput.value.split('\n').filter(n => n.trim() !== '');
                     if (names.length === 0) names = ['No Names'];
                     const mode = modeSelect.value;
                     
-                    // Reset UI
                     resultContainer.className = 'result-container flex-1 w-full overflow-auto mb-4 px-2';
                     result.className = 'hand-font text-slate-700';
                     result.innerHTML = '';
 
-                    // Shuffle
                     for (let i = names.length - 1; i > 0; i--) {
                         const j = Math.floor(Math.random() * (i + 1));
                         let temp = names[i];
@@ -621,9 +710,7 @@
                         }, 100);
                     } 
                     else if (mode === 'list') {
-                        result.innerHTML = names.map((n,i) => {
-                            return '<div class="py-1 border-b border-slate-100 last:border-0">' + (i+1) + '. ' + n + '</div>';
-                        }).join('');
+                        result.innerHTML = names.map((n,i) => `<div class="py-1 border-b border-slate-100 last:border-0">${i+1}. ${n}</div>`).join('');
                     } 
                     else if (mode === 'groups') {
                         const size = parseInt(groupSizeInput.value) || 3;
@@ -633,28 +720,30 @@
                         }
                         
                         result.className = 'hand-font text-slate-700 grid grid-cols-2 gap-2';
-                        const groupsHtml = groups.map((g, i) => {
-                            const namesHtml = g.map(n => '<div>' + n + '</div>').join('');
-                            return '<div class="bg-indigo-50 rounded p-2 text-sm">' +
-                                    '<div class="font-bold text-indigo-600 mb-1">Group ' + (i+1) + '</div>' +
-                                    namesHtml +
-                                '</div>';
+                        result.innerHTML = groups.map((g, i) => {
+                            return `<div class="bg-indigo-50 rounded p-2 text-sm">
+                                    <div class="font-bold text-indigo-600 mb-1">Group ${i+1}</div>
+                                    ${g.map(n => `<div>${n}</div>`).join('')}
+                                </div>`;
                         }).join('');
-                        result.innerHTML = groupsHtml;
                     }
+                });
+
+                 w.getState = () => ({
+                    list: listInput.value,
+                    mode: modeSelect.value,
+                    groupSize: groupSizeInput.value
                 });
             }
 
-            // --- Dice ---
             if (w.type === 'dice') {
                 const btn = root.querySelector('.btn-roll');
                 const container = root.querySelector('.dice-container');
                 const select = root.querySelector('.inp-count');
 
-                const renderDie = (val) => {
-                    const icons = ['one', 'two', 'three', 'four', 'five', 'six'];
-                    return '<i class="fa-solid fa-dice-' + icons[val-1] + ' text-6xl text-indigo-600 animate-bounce"></i>';
-                };
+                if(state) select.value = state.count;
+
+                const renderDie = (val) => `<i class="fa-solid fa-dice-${['one', 'two', 'three', 'four', 'five', 'six'][val-1]} text-6xl text-indigo-600 animate-bounce"></i>`;
 
                 btn.addEventListener('click', () => {
                     container.innerHTML = '';
@@ -666,11 +755,11 @@
                         container.appendChild(d);
                     }
                 });
-                // Init
-                btn.click(); 
+                if(!state) btn.click(); 
+
+                w.getState = () => ({ count: select.value });
             }
 
-            // --- QR ---
             if (w.type === 'qr') {
                 const inp = root.querySelector('.inp-url');
                 const img = root.querySelector('.qr-img');
@@ -681,11 +770,15 @@
                     img.src = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' + encodeURIComponent(url);
                     txt.textContent = url;
                 };
+
+                if(state) inp.value = state.url;
+                
                 inp.addEventListener('input', update);
                 update();
+
+                w.getState = () => ({ url: inp.value });
             }
 
-            // --- Embed ---
             if (w.type === 'embed') {
                 const inp = root.querySelector('.inp-embed');
                 const btn = root.querySelector('.btn-load');
@@ -700,11 +793,20 @@
                         overlay.style.display = 'flex';
                     }
                 };
+
+                if(state) {
+                    inp.value = state.url;
+                    loadUrl();
+                }
+
                 btn.addEventListener('click', loadUrl);
+
+                w.getState = () => ({ url: inp.value });
             }
 
-            // --- Drawing ---
             if (w.type === 'drawing') {
+                // Drawing state is not saved as it's complex (canvas data).
+                // It will be a blank canvas on load.
                 const canvas = root.querySelector('canvas');
                 const ctx = canvas.getContext('2d');
                 let drawing = false;
@@ -715,16 +817,16 @@
                     const rect = canvas.getBoundingClientRect();
                     canvas.width = rect.width;
                     canvas.height = rect.height;
-                    ctx.lineWidth = 3;
-                    ctx.lineCap = 'round';
+                     ctx.lineWidth = 3; // re-apply settings after resize
+                     ctx.lineCap = 'round';
                 };
                 new ResizeObserver(resizeCanvas).observe(canvas.parentElement);
+
 
                 const getPos = (e) => {
                     const rect = canvas.getBoundingClientRect();
                     return { x: e.clientX - rect.left, y: e.clientY - rect.top };
                 };
-
                 canvas.addEventListener('mousedown', (e) => {
                     drawing = true;
                     ctx.beginPath();
@@ -738,22 +840,24 @@
                     ctx.lineTo(p.x, p.y);
                     ctx.stroke();
                 });
-
                 root.querySelectorAll('.btn-color').forEach(btn => {
                     btn.addEventListener('click', () => { ctx.strokeStyle = btn.dataset.color; });
                 });
                 root.querySelector('.btn-clear').addEventListener('click', () => {
                     ctx.clearRect(0, 0, canvas.width, canvas.height);
                 });
+                
+                w.getState = () => ({}); // No state to save
             }
             
-            // --- Sound ---
             if (w.type === 'sound') {
                 const bar = root.querySelector('.mic-bar');
                 const slider = root.querySelector('.inp-sens');
                 const startBtn = root.querySelector('.btn-mic-start');
                 const overlay = root.querySelector('.mic-overlay');
                 let isRunning = false;
+
+                 if(state) slider.value = state.sensitivity;
 
                 startBtn.addEventListener('click', async () => {
                     if(isRunning) return;
@@ -786,13 +890,26 @@
                         handlePermissionError(root.querySelector('.widget-content'), 'Microphone');
                     }
                 });
+                
+                 w.getState = () => ({ sensitivity: slider.value });
             }
 
-            // --- Poll ---
             if (w.type === 'poll') {
                 const labels = root.querySelectorAll('.opt-label');
                 const inputs = [root.querySelector('.inp-opt-a'), root.querySelector('.inp-opt-b')];
                 
+                if (state) {
+                    polls[w.id] = state.votes || [0,0];
+                    inputs[0].value = state.labelA;
+                    inputs[1].value = state.labelB;
+                } else {
+                     polls[w.id] = [0,0];
+                }
+                labels[0].textContent = inputs[0].value;
+                labels[1].textContent = inputs[1].value;
+                updatePollVisuals(root.querySelector('.widget-content'), polls[w.id]);
+
+
                 inputs.forEach((inp, i) => {
                     inp.addEventListener('input', () => { labels[i].textContent = inp.value.substring(0, 15); });
                 });
@@ -800,7 +917,6 @@
                 root.querySelectorAll('.btn-vote').forEach(btn => {
                     btn.addEventListener('click', () => {
                         const idx = parseInt(btn.dataset.idx);
-                        if(!polls[w.id]) polls[w.id] = [0, 0];
                         polls[w.id][idx]++;
                         updatePollVisuals(root.querySelector('.widget-content'), polls[w.id]);
                     });
@@ -810,10 +926,16 @@
                     polls[w.id] = [0, 0];
                     updatePollVisuals(root.querySelector('.widget-content'), polls[w.id]);
                 });
+
+                 w.getState = () => ({
+                    votes: polls[w.id],
+                    labelA: inputs[0].value,
+                    labelB: inputs[1].value
+                });
             }
 
-            // --- Webcam ---
             if (w.type === 'webcam') {
+                // State not saved for webcam as it's just a live feed.
                 const startBtn = root.querySelector('.btn-cam-start');
                 startBtn.addEventListener('click', () => {
                     const video = startBtn.previousElementSibling;
@@ -827,20 +949,19 @@
                         handlePermissionError(startBtn.parentElement, 'Camera');
                     });
                 });
+                w.getState = () => ({}); // No state
             }
             
-            // --- Timetable ---
             if (w.type === 'timetable') {
                 const tbody = root.querySelector('.timetable-body');
                 const textarea = root.querySelector('.inp-data');
                 const btn = root.querySelector('.btn-apply');
                 const emptyMsg = root.querySelector('.empty-msg');
 
-                btn.addEventListener('click', () => {
-                    const lines = textarea.value.split('\n').filter(x => x.trim());
-                    tbody.innerHTML = '';
-                    
-                    if(lines.length > 0) {
+                const renderTable = (data) => {
+                     const lines = data.split('\n').filter(x => x.trim());
+                     tbody.innerHTML = '';
+                     if(lines.length > 0) {
                         emptyMsg.style.display = 'none';
                         lines.forEach(line => {
                             const parts = line.split('|');
@@ -849,15 +970,104 @@
                             
                             const tr = document.createElement('tr');
                             tr.className = 'border-b last:border-0';
-                            tr.innerHTML = '<td class="p-2 font-bold text-indigo-600 whitespace-nowrap border-r bg-indigo-50/50">' + time + '</td>' +
-                                           '<td class="p-2 text-slate-700">' + act + '</td>';
+                            tr.innerHTML = `<td class="p-2 font-bold text-indigo-600 whitespace-nowrap border-r bg-indigo-50/50">${time}</td><td class="p-2 text-slate-700">${act}</td>`;
                             tbody.appendChild(tr);
                         });
                     } else {
                          emptyMsg.style.display = 'block';
                     }
+                }
+
+                if(state) {
+                    textarea.value = state.data;
+                    renderTable(state.data);
+                }
+
+                btn.addEventListener('click', () => {
+                    renderTable(textarea.value);
                     toggleSettings(w.id);
                 });
+
+                w.getState = () => ({ data: textarea.value });
+            }
+        }
+        
+        // --- Save & Load ---
+        function saveState(){
+            const state = {
+                bg: document.getElementById('app-body').className,
+                widgets: widgets.map(w => {
+                    const rect = w.el.getBoundingClientRect();
+                    return {
+                        id: w.id,
+                        type: w.type,
+                        x: w.el.offsetLeft,
+                        y: w.el.offsetTop,
+                        w: w.el.offsetWidth,
+                        h: w.el.offsetHeight,
+                        z: w.el.style.zIndex,
+                        minimized: w.el.classList.contains('minimized'),
+                        settings: document.getElementById('flipper-' + w.id).classList.contains('flip-active'),
+                        data: w.getState ? w.getState() : {}
+                    };
+                }),
+                polls: polls // Save poll data separately
+            };
+
+            const jsonState = JSON.stringify(state);
+            google.script.run
+                .withSuccessHandler(showSaveIndicator)
+                .withFailureHandler(alert)
+                .saveDashboard(jsonState);
+        }
+
+        function loadState(){
+            google.script.run
+                .withSuccessHandler(data => {
+                    if(!data) return;
+                    try {
+                        const state = JSON.parse(data);
+                        
+                        // Clear existing
+                        widgets.forEach(w => w.el.remove());
+                        widgets = [];
+                        
+                        // Load background
+                        setBg(state.bg.replace('h-screen w-screen overflow-hidden transition-colors duration-500 ', ''));
+
+                        // Load widgets
+                        if(state.widgets) {
+                            state.widgets.forEach(s => spawnWidget(s.type, s));
+                        }
+                        
+                        // Load poll data
+                        if(state.polls) {
+                            polls = state.polls;
+                            // Need to re-render polls after loading
+                             widgets.forEach(w => {
+                                if(w.type === 'poll') {
+                                    updatePollVisuals(w.el.querySelector('.widget-content'), polls[w.id] || [0,0]);
+                                }
+                             });
+                        }
+
+                    } catch(e) {
+                        console.error("Error loading state:", e);
+                        alert("Could not load saved dashboard. It might be corrupted.");
+                    }
+                })
+                .loadDashboard();
+        }
+
+        function showSaveIndicator(response) {
+            if(response && response.success) {
+                const indicator = document.getElementById('save-indicator');
+                indicator.style.opacity = '1';
+                setTimeout(() => {
+                    indicator.style.opacity = '0';
+                }, 2000);
+            } else {
+                alert(response.message);
             }
         }
 
@@ -868,20 +1078,18 @@
             msgDiv.className = 'perm-error';
             
             if(isEmbedded) {
-                msgDiv.innerHTML = [
-                    '<div class="text-red-500 text-4xl mb-2"><i class="fa-solid fa-ban"></i></div>',
-                    '<div class="font-bold text-slate-800">Blocked by Host Site</div>',
-                    '<p class="text-xs text-slate-500 mb-3 px-4">Google Sites blocks ' + featureName + ' access inside embeds.</p>',
-                    '<button onclick="openInNewTab()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg shadow hover:bg-indigo-700 text-sm font-bold">',
-                    '<i class="fa-solid fa-up-right-from-square"></i> Open in New Tab',
-                    '</button>'
-                ].join('');
+                msgDiv.innerHTML = `
+                    <div class="text-red-500 text-4xl mb-2"><i class="fa-solid fa-ban"></i></div>
+                    <div class="font-bold text-slate-800">Blocked by Host Site</div>
+                    <p class="text-xs text-slate-500 mb-3 px-4">Google Sites blocks ${featureName} access inside embeds.</p>
+                    <button onclick="openInNewTab()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg shadow hover:bg-indigo-700 text-sm font-bold">
+                    <i class="fa-solid fa-up-right-from-square"></i> Open in New Tab
+                    </button>`;
             } else {
-                msgDiv.innerHTML = [
-                    '<div class="text-red-500 text-4xl mb-2"><i class="fa-solid fa-ban"></i></div>',
-                    '<div class="font-bold text-slate-800">Access Denied</div>',
-                    '<p class="text-xs text-slate-500 mb-2 px-4">Please allow ' + featureName + ' access in your browser URL bar.</p>'
-                ].join('');
+                msgDiv.innerHTML = `
+                    <div class="text-red-500 text-4xl mb-2"><i class="fa-solid fa-ban"></i></div>
+                    <div class="font-bold text-slate-800">Access Denied</div>
+                    <p class="text-xs text-slate-500 mb-2 px-4">Please allow ${featureName} access in your browser URL bar.</p>`;
             }
             container.appendChild(msgDiv);
         }
@@ -901,11 +1109,11 @@
             const p0 = total === 0 ? 0 : (data[0] / total) * 100;
             const p1 = total === 0 ? 0 : (data[1] / total) * 100;
             
-            bars[0].style.height = (p0 === 0 && total > 0) ? '5px' : p0 + '%';
-            bars[1].style.height = (p1 === 0 && total > 0) ? '5px' : p1 + '%';
+            if(bars[0]) bars[0].style.height = (p0 === 0 && total > 0) ? '5px' : p0 + '%';
+            if(bars[1]) bars[1].style.height = (p1 === 0 && total > 0) ? '5px' : p1 + '%';
             
-            counts[0].textContent = data[0];
-            counts[1].textContent = data[1];
+            if(counts[0]) counts[0].textContent = data[0];
+            if(counts[1]) counts[1].textContent = data[1];
         }
 
         function toggleSettings(id) {
@@ -918,7 +1126,7 @@
 
         function closeWidget(id) {
             const el = document.getElementById('widget-' + id);
-            el.remove();
+            if(el) el.remove();
             widgets = widgets.filter(w => w.id !== id);
         }
 
@@ -960,7 +1168,7 @@
                 dragItem.style.top = newY + 'px';
             }
             if (resizeItem) {
-                const dx = e.clientX - initialMouseX;
+                const dx = e.clientX - initialMouseY; // Corrected: should be e.clientX - initialMouseX
                 const dy = e.clientY - initialMouseY;
                 resizeItem.style.width = Math.max(150, initialW + dx) + 'px';
                 resizeItem.style.height = Math.max(100, initialH + dy) + 'px';
@@ -998,22 +1206,24 @@
             osc.stop(now + 0.5);
 
             setTimeout(() => {
-                 const osc2 = ctx.createOscillator();
-                 const gain2 = ctx.createGain();
-                 osc2.connect(gain2);
-                 gain2.connect(ctx.destination);
-                 osc2.type = 'triangle';
-                 osc2.frequency.value = 440;
-                 gain2.gain.setValueAtTime(1, ctx.currentTime);
-                 gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
-                 osc2.start(ctx.currentTime);
-                 osc2.stop(ctx.currentTime + 0.5);
+                const osc2 = ctx.createOscillator();
+                const gain2 = ctx.createGain();
+                osc2.connect(gain2);
+                gain2.connect(ctx.destination);
+                osc2.type = 'triangle';
+                osc2.frequency.value = 440;
+                gain2.gain.setValueAtTime(1, ctx.currentTime);
+                gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+                osc2.start(ctx.currentTime);
+                osc2.stop(ctx.currentTime + 0.5);
             }, 600);
         }
 
         function setBg(val) {
             const body = document.getElementById('app-body');
-            body.className = 'h-screen w-screen overflow-hidden transition-colors duration-500 ' + val;
+            const classList = body.className.split(' ').filter(c => !c.startsWith('bg-') && !c.startsWith('from-') && !c.startsWith('via-') && !c.startsWith('to-'));
+            body.className = [...classList, ...val.split(' ')].join(' ');
+
             if(val === 'bg-grid') {
                  body.classList.add('bg-slate-50');
                  body.style.backgroundImage = 'radial-gradient(#94a3b8 1px, transparent 1px)';
