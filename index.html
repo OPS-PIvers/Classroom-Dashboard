@@ -127,6 +127,8 @@
         
         <div class="w-px h-6 bg-gray-300 mx-1"></div>
         <button id="btn-bg-menu" class="dock-btn p-2.5 rounded-xl hover:bg-gray-100 text-gray-600" title="Backgrounds"><i class="fa-solid fa-image fa-lg"></i></button>
+        <div class="w-px h-6 bg-gray-300 mx-1"></div>
+        <button id="btn-start-session" class="dock-btn p-2.5 rounded-xl hover:bg-green-100 text-green-600" title="Start Live Session"><i class="fa-solid fa-tower-broadcast fa-lg"></i></button>
         <div class="w-px h-6 bg-gray-300 mx-1 hidden"></div>
         <button id="btn-record-menu" class="dock-btn p-2.5 rounded-xl hover:bg-red-50 text-red-600 hidden" title="Record"><i class="fa-solid fa-circle fa-lg"></i></button>
     </div>
@@ -163,6 +165,38 @@
     <div id="save-indicator">Saved!</div>
 
     <div id="toast-container" class="fixed top-4 right-4 z-[100] flex flex-col gap-2"></div>
+
+    <!-- Student Join Screen -->
+    <div id="student-join-screen" class="fixed inset-0 bg-slate-900 z-[200] flex items-center justify-center hidden">
+        <div class="bg-white rounded-2xl shadow-2xl p-8 max-w-sm w-full mx-4 text-center">
+            <div class="text-4xl mb-4"><i class="fa-solid fa-users text-indigo-500"></i></div>
+            <h2 class="text-2xl font-bold text-slate-800 mb-2">Join Session</h2>
+            <p class="text-slate-500 mb-6">Enter the code shown by your teacher</p>
+            <input type="text" id="join-code-input" class="w-full text-center text-3xl font-mono tracking-widest border-2 border-slate-300 rounded-xl p-4 mb-4 uppercase" placeholder="ABC123" maxlength="6">
+            <button id="btn-join-session" class="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 transition-colors">
+                <i class="fa-solid fa-right-to-bracket mr-2"></i> Join
+            </button>
+            <p id="join-error" class="text-red-500 text-sm mt-3 hidden"></p>
+        </div>
+    </div>
+
+    <!-- Session Indicator (Teacher) -->
+    <div id="session-indicator" class="fixed top-4 left-1/2 transform -translate-x-1/2 bg-green-600 text-white px-4 py-2 rounded-full shadow-lg hidden z-50 flex items-center gap-3">
+        <span class="w-3 h-3 bg-white rounded-full animate-pulse"></span>
+        <span class="font-bold">LIVE:</span>
+        <span id="session-code-display" class="font-mono tracking-wider">------</span>
+        <button id="btn-end-session" class="ml-2 bg-white text-green-600 px-3 py-1 rounded-full text-sm font-bold hover:bg-green-100">End</button>
+    </div>
+
+    <!-- Student Mode Header -->
+    <div id="student-header" class="fixed top-0 left-0 right-0 bg-indigo-600 text-white py-3 px-4 z-50 hidden flex items-center justify-between">
+        <div class="flex items-center gap-2">
+            <i class="fa-solid fa-chalkboard-user"></i>
+            <span class="font-bold">Student View</span>
+            <span class="text-indigo-200 text-sm ml-2">Session: <span id="student-session-code" class="font-mono">------</span></span>
+        </div>
+        <button id="btn-leave-session" class="bg-white/20 hover:bg-white/30 px-3 py-1 rounded text-sm">Leave</button>
+    </div>
 
     <!-- TEMPLATES -->
     <template id="tpl-window-frame">
@@ -450,6 +484,12 @@
         let currentDashboardName = null;
         let dashboards = {};
 
+        // Session State
+        let isStudentMode = false;
+        let sessionCode = null;
+        let sessionPollInterval = null;
+        let activeSessionCode = null; // For teacher
+
         // Recording State
         let mediaRecorder = null;
         let recordedChunks = [];
@@ -526,7 +566,35 @@
 
             // Save/Load
             document.getElementById('btn-save').addEventListener('click', handleSaveClick);
-            loadInitialData();
+
+            // Session Controls
+            document.getElementById('btn-start-session').addEventListener('click', startLiveSession);
+            document.getElementById('btn-end-session').addEventListener('click', endLiveSession);
+            document.getElementById('btn-join-session').addEventListener('click', handleJoinSession);
+            document.getElementById('btn-leave-session').addEventListener('click', leaveSession);
+
+            // Join code input - auto uppercase and enter key
+            const joinInput = document.getElementById('join-code-input');
+            joinInput.addEventListener('input', (e) => {
+                e.target.value = e.target.value.toUpperCase();
+            });
+            joinInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') handleJoinSession();
+            });
+
+            // Check for student mode via URL parameter
+            const urlParams = new URLSearchParams(window.location.search);
+            const joinCode = urlParams.get('join');
+
+            if (joinCode) {
+                // Student mode - show join screen with pre-filled code
+                document.getElementById('student-join-screen').classList.remove('hidden');
+                document.getElementById('join-code-input').value = joinCode.toUpperCase();
+                document.getElementById('toolbar-container').classList.add('hidden');
+            } else {
+                // Teacher mode - load normally
+                loadInitialData();
+            }
         });
 
         function spawnWidget(type, state = null) {
@@ -1786,6 +1854,370 @@
                 toast.classList.add('translate-x-full', 'opacity-0');
                 toast.addEventListener('transitionend', () => toast.remove());
             }, 3000);
+        }
+
+        // ==================== LIVE SESSION FUNCTIONS ====================
+
+        function startLiveSession() {
+            if (activeSessionCode) {
+                showToast('Session already active: ' + activeSessionCode, 'warning');
+                return;
+            }
+
+            // Get current dashboard state
+            const state = {
+                bg: document.getElementById('app-body').className,
+                widgets: widgets.map(w => ({
+                    id: w.id,
+                    type: w.type,
+                    x: w.el.offsetLeft,
+                    y: w.el.offsetTop,
+                    w: w.el.offsetWidth,
+                    h: w.el.offsetHeight,
+                    z: w.el.style.zIndex,
+                    minimized: w.el.classList.contains('minimized'),
+                    settings: false,
+                    data: w.getState ? w.getState() : {}
+                })),
+                polls: polls
+            };
+
+            google.script.run
+                .withSuccessHandler(response => {
+                    if (response.success) {
+                        activeSessionCode = response.code;
+                        document.getElementById('session-code-display').textContent = response.code;
+                        document.getElementById('session-indicator').classList.remove('hidden');
+                        document.getElementById('btn-start-session').classList.add('hidden');
+                        showToast('Live session started! Code: ' + response.code, 'success');
+                    } else {
+                        showToast(response.message || 'Failed to create session', 'error');
+                    }
+                })
+                .withFailureHandler(err => showToast('Error: ' + err, 'error'))
+                .createSession(JSON.stringify(state));
+        }
+
+        function endLiveSession() {
+            if (!activeSessionCode) return;
+
+            google.script.run
+                .withSuccessHandler(response => {
+                    if (response.success) {
+                        document.getElementById('session-indicator').classList.add('hidden');
+                        document.getElementById('btn-start-session').classList.remove('hidden');
+                        showToast('Session ended', 'info');
+                        activeSessionCode = null;
+                    }
+                })
+                .withFailureHandler(err => showToast('Error: ' + err, 'error'))
+                .endSession(activeSessionCode);
+        }
+
+        function handleJoinSession() {
+            const code = document.getElementById('join-code-input').value.trim().toUpperCase();
+            const errorEl = document.getElementById('join-error');
+
+            if (!code || code.length !== 6) {
+                errorEl.textContent = 'Please enter a 6-character code';
+                errorEl.classList.remove('hidden');
+                return;
+            }
+
+            errorEl.classList.add('hidden');
+
+            google.script.run
+                .withSuccessHandler(response => {
+                    if (response.success) {
+                        sessionCode = code;
+                        isStudentMode = true;
+                        document.getElementById('student-join-screen').classList.add('hidden');
+                        document.getElementById('student-header').classList.remove('hidden');
+                        document.getElementById('student-session-code').textContent = code;
+                        document.getElementById('app-body').classList.add('pt-12'); // Offset for header
+
+                        // Load initial session data
+                        loadStudentView(response.data);
+
+                        // Start polling for updates
+                        sessionPollInterval = setInterval(pollSessionData, 3000);
+
+                        showToast('Joined session!', 'success');
+                    } else {
+                        errorEl.textContent = response.message || 'Session not found';
+                        errorEl.classList.remove('hidden');
+                    }
+                })
+                .withFailureHandler(err => {
+                    errorEl.textContent = 'Connection error. Please try again.';
+                    errorEl.classList.remove('hidden');
+                })
+                .joinSession(code);
+        }
+
+        function leaveSession() {
+            if (sessionPollInterval) {
+                clearInterval(sessionPollInterval);
+                sessionPollInterval = null;
+            }
+
+            // Clear widgets
+            widgets.forEach(w => w.el.remove());
+            widgets = [];
+
+            // Reset state
+            isStudentMode = false;
+            sessionCode = null;
+
+            // Reset UI
+            document.getElementById('student-header').classList.add('hidden');
+            document.getElementById('app-body').classList.remove('pt-12');
+            setBg('bg-slate-900');
+
+            // Show join screen again
+            document.getElementById('student-join-screen').classList.remove('hidden');
+            document.getElementById('join-code-input').value = '';
+
+            showToast('Left session', 'info');
+        }
+
+        function pollSessionData() {
+            if (!sessionCode || !isStudentMode) return;
+
+            google.script.run
+                .withSuccessHandler(response => {
+                    if (response.success && response.active) {
+                        // Update view with new data
+                        updateStudentView(response.data);
+                    } else if (!response.active) {
+                        // Session ended
+                        clearInterval(sessionPollInterval);
+                        showToast('Session has ended', 'warning');
+                        leaveSession();
+                    }
+                })
+                .withFailureHandler(err => {
+                    console.error('Poll error:', err);
+                })
+                .getSessionData(sessionCode);
+        }
+
+        function loadStudentView(data) {
+            // Clear existing widgets
+            widgets.forEach(w => w.el.remove());
+            widgets = [];
+
+            // Set background
+            if (data.bg) {
+                setBg(data.bg.replace('h-screen w-screen overflow-hidden transition-colors duration-500 ', ''));
+            }
+
+            // Spawn widgets in student mode
+            if (data.widgets) {
+                data.widgets.forEach(s => spawnStudentWidget(s, data.polls));
+            }
+        }
+
+        function updateStudentView(data) {
+            // Update poll counts from session data
+            if (data.polls) {
+                widgets.forEach(w => {
+                    if (w.type === 'poll' && data.polls[w.id]) {
+                        const pollData = data.polls[w.id];
+                        const counts = [pollData.A || 0, pollData.B || 0];
+                        updatePollVisuals(w.el.querySelector('.widget-content'), counts);
+                    }
+                });
+            }
+        }
+
+        function spawnStudentWidget(state, sessionPolls) {
+            const id = state.id;
+            const type = state.type;
+            const config = getWidgetConfig(type);
+
+            const frameTpl = document.getElementById('tpl-window-frame');
+            if (!frameTpl) return;
+
+            const skeleton = frameTpl.content.cloneNode(true);
+            const el = document.createElement('div');
+            el.className = 'widget';
+            el.id = 'widget-' + id;
+
+            el.style.left = state.x + 'px';
+            el.style.top = state.y + 'px';
+            el.style.width = state.w + 'px';
+            el.style.height = state.h + 'px';
+            el.style.zIndex = state.z;
+
+            skeleton.querySelector('.widget-title-text').textContent = config.title;
+            skeleton.querySelector('.widget-icon').className = config.icon;
+
+            // Remove controls for student view
+            const header = skeleton.querySelector('.widget-header');
+            header.style.cursor = 'default';
+            skeleton.querySelector('.btn-settings').remove();
+            skeleton.querySelector('.btn-min').remove();
+            skeleton.querySelector('.btn-close').remove();
+            skeleton.querySelector('.resize-handle').remove();
+
+            const contentArea = skeleton.querySelector('.widget-content');
+            contentArea.id = 'content-' + id;
+
+            el.appendChild(skeleton);
+            document.getElementById('app-container').appendChild(el);
+
+            const typeTpl = document.getElementById('tpl-' + type);
+            if (typeTpl) {
+                const clone = typeTpl.content.cloneNode(true);
+                const settingsForm = clone.querySelector('.settings-form');
+                if (settingsForm) settingsForm.remove(); // No settings in student view
+                contentArea.appendChild(clone);
+            }
+
+            const widget = { id, type, el };
+            widgets.push(widget);
+
+            // Initialize widget for student view
+            initStudentWidgetLogic(widget, state.data, sessionPolls);
+        }
+
+        function initStudentWidgetLogic(w, data, sessionPolls) {
+            const root = w.el;
+
+            // Only initialize interactive elements for students
+            if (w.type === 'poll') {
+                const labels = root.querySelectorAll('.opt-label');
+                const voteButtons = root.querySelectorAll('.btn-vote');
+
+                // Set labels
+                if (data) {
+                    labels[0].textContent = data.labelA || 'A';
+                    labels[1].textContent = data.labelB || 'B';
+                }
+
+                // Get initial poll data from session
+                let pollData = sessionPolls && sessionPolls[w.id] ? sessionPolls[w.id] : { A: 0, B: 0 };
+                updatePollVisuals(root.querySelector('.widget-content'), [pollData.A, pollData.B]);
+
+                // Remove reset button for students
+                const resetBtn = root.querySelector('.btn-reset');
+                if (resetBtn) resetBtn.remove();
+
+                // Student voting
+                voteButtons.forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const idx = parseInt(btn.dataset.idx);
+                        const option = idx === 0 ? 'A' : 'B';
+
+                        // Disable buttons after voting
+                        voteButtons.forEach(b => {
+                            b.style.pointerEvents = 'none';
+                            b.style.opacity = '0.7';
+                        });
+                        btn.style.opacity = '1';
+                        btn.innerHTML += ' <i class="fa-solid fa-check text-xs"></i>';
+
+                        google.script.run
+                            .withSuccessHandler(response => {
+                                if (response.success) {
+                                    showToast('Vote recorded!', 'success');
+                                    // Update display with new counts
+                                    updatePollVisuals(root.querySelector('.widget-content'), [response.polls.A, response.polls.B]);
+                                }
+                            })
+                            .withFailureHandler(err => showToast('Vote failed', 'error'))
+                            .submitPollResponse(sessionCode, w.id, option);
+                    });
+                });
+            } else if (w.type === 'clock') {
+                // Clock - same as teacher
+                const timeEl = root.querySelector('[data-id="time"]');
+                const dateEl = root.querySelector('[data-id="date"]');
+
+                const update = () => {
+                    if (!root.isConnected) return;
+                    const now = new Date();
+                    const is24h = data && data.is24h;
+                    const showSec = data && data.showSeconds;
+                    const opts = { hour: 'numeric', minute: '2-digit', hour12: !is24h };
+                    if (showSec) opts.second = '2-digit';
+                    timeEl.textContent = now.toLocaleTimeString([], opts);
+                    dateEl.textContent = now.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
+                    requestAnimationFrame(update);
+                };
+                update();
+            } else if (w.type === 'traffic') {
+                // Show traffic light state
+                const lights = root.querySelectorAll('.traffic-light');
+                lights.forEach(l => l.style.pointerEvents = 'none'); // Disable clicks
+                if (data && data.active) {
+                    const activeLight = root.querySelector(`.traffic-light[data-color="${data.active}"]`);
+                    if (activeLight) activeLight.classList.add('active');
+                }
+            } else if (w.type === 'text') {
+                // Text - read-only
+                const area = root.querySelector('.widget-content div');
+                if (data) {
+                    area.innerHTML = data.content || '';
+                    area.style.fontSize = (data.fontSize || 18) + 'px';
+                    root.querySelector('.widget-content').style.backgroundColor = data.bgColor || '';
+                }
+                area.contentEditable = 'false';
+            } else if (w.type === 'checklist') {
+                // Checklist - read-only
+                const container = root.querySelector('.check-list-container');
+                if (data && data.items) {
+                    container.innerHTML = '';
+                    data.items.forEach((item, i) => {
+                        const div = document.createElement('div');
+                        div.className = 'check-item flex items-start gap-2 mb-2 p-1';
+                        div.innerHTML = `<input type="checkbox" class="mt-1 accent-indigo-600" ${item.checked ? 'checked' : ''} disabled>` +
+                            `<span class="flex-1 text-slate-700 break-words ${item.checked ? 'line-through text-slate-400' : ''}">${item.text}</span>`;
+                        container.appendChild(div);
+                    });
+                }
+            } else if (w.type === 'timer') {
+                // Timer - show current state
+                const display = root.querySelector('[data-id="display"]');
+                if (data) {
+                    const time = data.initialTime || 300;
+                    const m = Math.floor(time / 60).toString().padStart(2, '0');
+                    const s = (time % 60).toString().padStart(2, '0');
+                    display.textContent = m + ':' + s;
+                }
+                // Hide controls
+                root.querySelectorAll('.btn-start, .btn-pause, .btn-reset').forEach(btn => btn.style.display = 'none');
+            } else if (w.type === 'timetable') {
+                // Timetable - read-only
+                const tbody = root.querySelector('.timetable-body');
+                const emptyMsg = root.querySelector('.empty-msg');
+                if (data && data.data) {
+                    const lines = data.data.split('\n').filter(x => x.trim());
+                    tbody.innerHTML = '';
+                    if (lines.length > 0) {
+                        emptyMsg.style.display = 'none';
+                        lines.forEach(line => {
+                            const parts = line.split('|');
+                            const time = parts[0] ? parts[0].trim() : '';
+                            const act = parts[1] ? parts[1].trim() : '';
+                            const tr = document.createElement('tr');
+                            tr.className = 'border-b last:border-0';
+                            tr.innerHTML = `<td class="p-2 font-bold text-indigo-600 whitespace-nowrap border-r bg-indigo-50/50">${time}</td><td class="p-2 text-slate-700">${act}</td>`;
+                            tbody.appendChild(tr);
+                        });
+                    }
+                }
+            } else if (w.type === 'qr') {
+                // QR code
+                const img = root.querySelector('.qr-img');
+                const txt = root.querySelector('[data-id="url-display"]');
+                if (data && data.url) {
+                    img.src = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' + encodeURIComponent(data.url);
+                    txt.textContent = data.url;
+                }
+            }
+            // Other widgets can be added as needed
         }
     </script>
 </body>
