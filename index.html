@@ -83,6 +83,12 @@
         #toolbar-container {
             backface-visibility: hidden;
             -webkit-font-smoothing: subpixel-antialiased;
+            transform-style: preserve-3d;
+        }
+        #toolbar-container i {
+            backface-visibility: hidden;
+            transform: translateZ(0);
+            -webkit-font-smoothing: antialiased;
         }
     </style>
 </head>
