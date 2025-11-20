@@ -107,6 +107,14 @@
         
         <div class="w-px h-6 bg-gray-300 mx-1"></div>
         <button id="btn-bg-menu" class="dock-btn p-2.5 rounded-xl hover:bg-gray-100 text-gray-600" title="Backgrounds"><i class="fa-solid fa-image fa-lg"></i></button>
+        <div class="w-px h-6 bg-gray-300 mx-1"></div>
+        <button id="btn-record-menu" class="dock-btn p-2.5 rounded-xl hover:bg-red-50 text-red-600" title="Record"><i class="fa-solid fa-circle fa-lg"></i></button>
+    </div>
+
+    <div id="record-menu" class="fixed bottom-24 right-4 bg-white rounded-xl shadow-xl p-4 hidden z-50 w-48 flex flex-col gap-2">
+        <button class="record-opt p-2 rounded-lg hover:bg-slate-100 text-slate-700 text-left font-medium" data-type="voice"><i class="fa-solid fa-microphone mr-2 text-indigo-500"></i> Voice Only</button>
+        <button class="record-opt p-2 rounded-lg hover:bg-slate-100 text-slate-700 text-left font-medium" data-type="screen"><i class="fa-solid fa-desktop mr-2 text-blue-500"></i> Screen Only</button>
+        <button class="record-opt p-2 rounded-lg hover:bg-slate-100 text-slate-700 text-left font-medium" data-type="both"><i class="fa-solid fa-video mr-2 text-red-500"></i> Voice & Screen</button>
     </div>
 
     <div id="bg-menu" class="fixed bottom-24 right-4 bg-white rounded-xl shadow-xl p-4 hidden z-50 w-64 grid grid-cols-2 gap-2">
@@ -398,10 +406,28 @@
             bgMenuBtn.addEventListener('click', () => {
                  bgMenu.classList.toggle('hidden');
                  document.getElementById('dashboards-menu').classList.add('hidden');
+                 document.getElementById('record-menu').classList.add('hidden');
             });
             
             document.querySelectorAll('.bg-opt').forEach(btn => {
                 btn.addEventListener('click', () => setBg(btn.dataset.bg));
+            });
+
+            // Bind Record Menu
+            const recordMenuBtn = document.getElementById('btn-record-menu');
+            const recordMenu = document.getElementById('record-menu');
+            recordMenuBtn.addEventListener('click', () => {
+                recordMenu.classList.toggle('hidden');
+                document.getElementById('bg-menu').classList.add('hidden');
+                document.getElementById('dashboards-menu').classList.add('hidden');
+            });
+
+            document.querySelectorAll('.record-opt').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const type = btn.dataset.type;
+                    recordMenu.classList.add('hidden');
+                    startRecording(type);
+                });
             });
 
             // Bind Dashboards Menu
@@ -410,6 +436,7 @@
             dashboardMenuBtn.addEventListener('click', () => {
                 dashboardMenu.classList.toggle('hidden');
                 document.getElementById('bg-menu').classList.add('hidden');
+                document.getElementById('record-menu').classList.add('hidden');
                 renderDashboardList();
             });
 
@@ -1389,6 +1416,62 @@
                 body.style.backgroundImage = '';
             }
             document.getElementById('bg-menu').classList.add('hidden');
+        }
+
+        function startRecording(type) {
+            console.log(`Start recording: ${type}`);
+            let msg = "";
+            if (type === 'voice') msg = "Voice Only recording started (Simulated)";
+            else if (type === 'screen') msg = "Screen Only recording started (Simulated)";
+            else if (type === 'both') msg = "Voice & Screen recording started (Simulated)";
+
+            if (typeof showToast === 'function') {
+                showToast(msg, 'info');
+            } else {
+                alert(msg);
+            }
+            // In a real implementation, we would use navigator.mediaDevices.getUserMedia()
+            // and MediaRecorder here.
+        }
+
+        function showToast(message, type = 'info') {
+            // Check if container exists, if not create it
+            let container = document.getElementById('toast-container');
+            if (!container) {
+                container = document.createElement('div');
+                container.id = 'toast-container';
+                container.className = 'fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none';
+                document.body.appendChild(container);
+            }
+
+            const toast = document.createElement('div');
+
+            const colors = {
+                info: 'bg-blue-500',
+                success: 'bg-green-500',
+                error: 'bg-red-500',
+                warning: 'bg-yellow-500'
+            };
+            const colorClass = colors[type] || colors.info;
+
+            toast.className = `${colorClass} text-white px-4 py-3 rounded shadow-lg flex items-center gap-2 transform transition-all duration-300 translate-x-full opacity-0 pointer-events-auto`;
+            toast.innerHTML = `
+                <i class="fa-solid ${type === 'success' ? 'fa-check-circle' : type === 'error' ? 'fa-circle-exclamation' : 'fa-circle-info'}"></i>
+                <span class="font-medium text-sm">${message}</span>
+            `;
+
+            container.appendChild(toast);
+
+            // Animate in
+            requestAnimationFrame(() => {
+                toast.classList.remove('translate-x-full', 'opacity-0');
+            });
+
+            // Remove after 3s
+            setTimeout(() => {
+                toast.classList.add('translate-x-full', 'opacity-0');
+                toast.addEventListener('transitionend', () => toast.remove());
+            }, 3000);
         }
     </script>
 </body>
