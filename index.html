@@ -840,9 +840,9 @@
                             groups.push(names.slice(i, i + size));
                         }
                         
-                        result.className = 'hand-font text-slate-700 grid grid-cols-2 gap-2';
+                        result.className = 'hand-font text-slate-700 flex flex-wrap gap-2 content-start';
                         result.innerHTML = groups.map((g, i) => {
-                            return `<div class="bg-indigo-50 rounded p-2 text-sm">
+                            return `<div class="bg-indigo-50 rounded p-2 text-sm flex-grow basis-[120px]">
                                     <div class="font-bold text-indigo-600 mb-1">Group ${i+1}</div>
                                     ${g.map(n => `<div>${n}</div>`).join('')}
                                 </div>`;
