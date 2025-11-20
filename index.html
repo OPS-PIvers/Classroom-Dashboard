@@ -345,15 +345,44 @@
     <template id="tpl-drawing">
         <div class="w-full h-full bg-white relative cursor-crosshair group">
             <canvas class="draw-canvas absolute inset-0 w-full h-full"></canvas>
-            <div class="absolute bottom-2 left-2 flex gap-1 bg-white/90 p-1 rounded border shadow opacity-0 group-hover:opacity-100 transition-opacity">
-                <button class="w-6 h-6 rounded-full bg-black btn-color" data-color="black"></button>
-                <button class="w-6 h-6 rounded-full bg-red-500 btn-color" data-color="red"></button>
-                <button class="w-6 h-6 rounded-full bg-blue-500 btn-color" data-color="blue"></button>
-                <button class="w-6 h-6 flex items-center justify-center text-slate-600 hover:bg-slate-200 rounded btn-clear"><i class="fa-solid fa-trash"></i></button>
+            <div class="absolute bottom-2 left-2 bg-white/95 p-2 rounded-lg border shadow-lg opacity-0 group-hover:opacity-100 transition-opacity">
+                <!-- Tools Row -->
+                <div class="flex gap-1 mb-2">
+                    <button class="btn-tool w-7 h-7 flex items-center justify-center rounded hover:bg-slate-100 text-slate-600 ring-2 ring-purple-500" data-tool="pen" title="Pen">
+                        <i class="fa-solid fa-pen fa-sm"></i>
+                    </button>
+                    <button class="btn-tool w-7 h-7 flex items-center justify-center rounded hover:bg-slate-100 text-slate-600" data-tool="eraser" title="Eraser">
+                        <i class="fa-solid fa-eraser fa-sm"></i>
+                    </button>
+                    <div class="w-px h-7 bg-slate-200 mx-1"></div>
+                    <button class="btn-clear w-7 h-7 flex items-center justify-center rounded hover:bg-red-100 text-red-500" title="Clear All">
+                        <i class="fa-solid fa-trash fa-sm"></i>
+                    </button>
+                </div>
+                <!-- Colors Grid -->
+                <div class="grid grid-cols-5 gap-1 mb-2">
+                    <button class="btn-color w-6 h-6 rounded-full bg-black ring-2 ring-purple-500" data-color="#000000"></button>
+                    <button class="btn-color w-6 h-6 rounded-full bg-white border border-slate-300" data-color="#ffffff"></button>
+                    <button class="btn-color w-6 h-6 rounded-full bg-red-500" data-color="#ef4444"></button>
+                    <button class="btn-color w-6 h-6 rounded-full bg-orange-500" data-color="#f97316"></button>
+                    <button class="btn-color w-6 h-6 rounded-full bg-yellow-400" data-color="#facc15"></button>
+                    <button class="btn-color w-6 h-6 rounded-full bg-green-500" data-color="#22c55e"></button>
+                    <button class="btn-color w-6 h-6 rounded-full bg-blue-500" data-color="#3b82f6"></button>
+                    <button class="btn-color w-6 h-6 rounded-full bg-purple-500" data-color="#a855f7"></button>
+                    <button class="btn-color w-6 h-6 rounded-full bg-pink-500" data-color="#ec4899"></button>
+                    <button class="btn-color w-6 h-6 rounded-full bg-slate-500" data-color="#64748b"></button>
+                </div>
+                <!-- Size Slider -->
+                <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-circle text-[4px] text-slate-400"></i>
+                    <input type="range" class="size-slider flex-1 h-1 accent-purple-500" min="1" max="20" value="3">
+                    <i class="fa-solid fa-circle text-xs text-slate-400"></i>
+                    <span class="size-value text-xs text-slate-500 w-6 text-right">3</span>
+                </div>
             </div>
         </div>
         <div class="settings-form">
-            <p class="text-sm text-slate-500">Canvas clears on resize. Use the toolbar on canvas to change colors.</p>
+            <p class="text-sm text-slate-500">Hover over canvas to show drawing tools.</p>
         </div>
     </template>
 
@@ -926,49 +955,101 @@
             }
 
             if (w.type === 'drawing') {
-                // Drawing state is not saved as it's complex (canvas data).
-                // It will be a blank canvas on load.
                 const canvas = root.querySelector('canvas');
                 const ctx = canvas.getContext('2d');
                 let drawing = false;
-                ctx.lineWidth = 3;
+                let currentTool = 'pen';
+                let currentColor = '#000000';
+                let currentSize = 3;
+
+                ctx.lineWidth = currentSize;
                 ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                ctx.strokeStyle = currentColor;
 
                 const resizeCanvas = () => {
                     const rect = canvas.getBoundingClientRect();
                     canvas.width = rect.width;
                     canvas.height = rect.height;
-                     ctx.lineWidth = 3; // re-apply settings after resize
-                     ctx.lineCap = 'round';
+                    ctx.lineWidth = currentSize;
+                    ctx.lineCap = 'round';
+                    ctx.lineJoin = 'round';
+                    ctx.strokeStyle = currentTool === 'eraser' ? '#ffffff' : currentColor;
                 };
                 new ResizeObserver(resizeCanvas).observe(canvas.parentElement);
 
-
                 const getPos = (e) => {
                     const rect = canvas.getBoundingClientRect();
-                    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+                    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                    return { x: clientX - rect.left, y: clientY - rect.top };
                 };
-                canvas.addEventListener('mousedown', (e) => {
+
+                const startDraw = (e) => {
+                    e.preventDefault();
                     drawing = true;
                     ctx.beginPath();
                     const p = getPos(e);
                     ctx.moveTo(p.x, p.y);
-                });
-                window.addEventListener('mouseup', () => drawing = false);
-                canvas.addEventListener('mousemove', (e) => {
-                    if(!drawing) return;
+                };
+
+                const draw = (e) => {
+                    if (!drawing) return;
+                    e.preventDefault();
                     const p = getPos(e);
                     ctx.lineTo(p.x, p.y);
                     ctx.stroke();
+                };
+
+                const stopDraw = () => drawing = false;
+
+                // Mouse events
+                canvas.addEventListener('mousedown', startDraw);
+                canvas.addEventListener('mousemove', draw);
+                window.addEventListener('mouseup', stopDraw);
+
+                // Touch events
+                canvas.addEventListener('touchstart', startDraw);
+                canvas.addEventListener('touchmove', draw);
+                canvas.addEventListener('touchend', stopDraw);
+
+                // Tool buttons
+                root.querySelectorAll('.btn-tool').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        currentTool = btn.dataset.tool;
+                        root.querySelectorAll('.btn-tool').forEach(b => b.classList.remove('ring-2', 'ring-purple-500'));
+                        btn.classList.add('ring-2', 'ring-purple-500');
+                        ctx.strokeStyle = currentTool === 'eraser' ? '#ffffff' : currentColor;
+                    });
                 });
+
+                // Color buttons
                 root.querySelectorAll('.btn-color').forEach(btn => {
-                    btn.addEventListener('click', () => { ctx.strokeStyle = btn.dataset.color; });
+                    btn.addEventListener('click', () => {
+                        currentColor = btn.dataset.color;
+                        root.querySelectorAll('.btn-color').forEach(b => b.classList.remove('ring-2', 'ring-purple-500'));
+                        btn.classList.add('ring-2', 'ring-purple-500');
+                        if (currentTool === 'pen') {
+                            ctx.strokeStyle = currentColor;
+                        }
+                    });
                 });
+
+                // Size slider
+                const sizeSlider = root.querySelector('.size-slider');
+                const sizeValue = root.querySelector('.size-value');
+                sizeSlider.addEventListener('input', () => {
+                    currentSize = parseInt(sizeSlider.value);
+                    ctx.lineWidth = currentSize;
+                    sizeValue.textContent = currentSize;
+                });
+
+                // Clear button
                 root.querySelector('.btn-clear').addEventListener('click', () => {
                     ctx.clearRect(0, 0, canvas.width, canvas.height);
                 });
-                
-                w.getState = () => ({}); // No state to save
+
+                w.getState = () => ({});
             }
             
             if (w.type === 'sound') {
