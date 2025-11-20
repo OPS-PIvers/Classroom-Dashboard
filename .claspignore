@@ -1,0 +1,16 @@
+# Ignore everything except Apps Script files
+**/**
+!appsscript.json
+!Code.js
+!index.html
+!*.gs
+!*.html
+node_modules/**
+onboarding-video/**
+.git/**
+.github/**
+*.md
+*.json
+!appsscript.json
+package*.json
+.clasp.json
