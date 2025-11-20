@@ -36,40 +36,58 @@ function getSheet() {
 }
 
 /**
- * Saves the user's dashboard configuration.
+ * Helper to get user row and data
+ */
+function getUserData(sheet, userEmail) {
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0] == userEmail) {
+      let jsonData = data[i][1];
+      let dashboards = {};
+      try {
+        if (jsonData) {
+          const parsed = JSON.parse(jsonData);
+          // Check if legacy format (direct dashboard object) or new format (map of dashboards)
+          // Legacy format has 'widgets' array or 'bg' string.
+          if ((parsed.widgets && Array.isArray(parsed.widgets)) || (parsed.bg && typeof parsed.bg === 'string')) {
+            dashboards["Default"] = parsed;
+          } else {
+            dashboards = parsed;
+          }
+        }
+      } catch (e) {
+        Logger.log("Error parsing JSON: " + e);
+      }
+      return { row: i + 1, dashboards: dashboards };
+    }
+  }
+  return { row: -1, dashboards: {} };
+}
+
+/**
+ * Saves a dashboard by name.
+ * @param {string} name The name of the dashboard.
  * @param {string} dashboardJson The JSON string of the dashboard configuration.
  */
-function saveDashboard(dashboardJson) {
+function saveDashboard(name, dashboardJson) {
   try {
     const sheet = getSheet();
     const userEmail = Session.getActiveUser().getEmail();
-    if (!userEmail) {
-      // This will happen if the user is not logged into a Google account,
-      // or if the script is running under an anonymous context.
-      // For domain-only web apps, this should generally not be an issue.
-      throw new Error("Could not identify user. Please make sure you are logged in to your Google account.");
-    }
+    if (!userEmail) throw new Error("Could not identify user.");
     
-    const data = sheet.getDataRange().getValues();
-    let userRow = -1;
+    const { row, dashboards } = getUserData(sheet, userEmail);
     
-    // Start from 1 to skip header
-    for (let i = 1; i < data.length; i++) {
-      if (data[i][0] == userEmail) {
-        userRow = i + 1; // 1-based index
-        break;
-      }
-    }
+    // Update or add the specific dashboard
+    dashboards[name] = JSON.parse(dashboardJson);
     
     const timestamp = new Date();
-    
-    if (userRow != -1) {
-      // User found, update the row
-      sheet.getRange(userRow, 2).setValue(dashboardJson);
-      sheet.getRange(userRow, 3).setValue(timestamp);
+    const newJsonData = JSON.stringify(dashboards);
+
+    if (row != -1) {
+      sheet.getRange(row, 2).setValue(newJsonData);
+      sheet.getRange(row, 3).setValue(timestamp);
     } else {
-      // User not found, append a new row
-      sheet.appendRow([userEmail, dashboardJson, timestamp]);
+      sheet.appendRow([userEmail, newJsonData, timestamp]);
     }
     
     return { success: true, message: "Dashboard saved successfully!" };
@@ -80,31 +98,56 @@ function saveDashboard(dashboardJson) {
 }
 
 /**
- * Loads the user's dashboard configuration.
- * @returns {string|null} The JSON string of the dashboard configuration, or null if not found.
+ * Deletes a dashboard by name.
+ * @param {string} name The name of the dashboard to delete.
  */
-function loadDashboard() {
+function deleteDashboard(name) {
   try {
     const sheet = getSheet();
     const userEmail = Session.getActiveUser().getEmail();
-     if (!userEmail) {
-      // No user, no saved dashboard. Return null to load the default.
-      return null;
-    }
-    
-    const data = sheet.getDataRange().getValues();
-    
-    // Start from 1 to skip header
-    for (let i = 1; i < data.length; i++) {
-      if (data[i][0] == userEmail) {
-        return data[i][1]; // Return the dashboard JSON string
+    if (!userEmail) throw new Error("Could not identify user.");
+
+    const { row, dashboards } = getUserData(sheet, userEmail);
+
+    if (dashboards[name] !== undefined) {
+      delete dashboards[name];
+      const timestamp = new Date();
+      const newJsonData = JSON.stringify(dashboards);
+      if (row != -1) {
+        sheet.getRange(row, 2).setValue(newJsonData);
+        sheet.getRange(row, 3).setValue(timestamp);
       }
+      return { success: true, message: "Dashboard deleted." };
+    } else {
+      return { success: false, message: "Dashboard not found." };
     }
-    
-    return null; // No configuration found for this user
   } catch (e) {
-    Logger.log("Error loading dashboard: " + e.toString());
-    // Don't throw an error to the user, just return null and let the front-end handle a fresh start.
-    return null; 
+    Logger.log("Error deleting dashboard: " + e.toString());
+    return { success: false, message: "Error deleting dashboard: " + e.message };
   }
+}
+
+/**
+ * Loads all dashboards for the user.
+ * @returns {string} JSON string of the map of dashboards.
+ */
+function getDashboards() {
+  try {
+    const sheet = getSheet();
+    const userEmail = Session.getActiveUser().getEmail();
+    if (!userEmail) return JSON.stringify({});
+    
+    const { dashboards } = getUserData(sheet, userEmail);
+    return JSON.stringify(dashboards);
+  } catch (e) {
+    Logger.log("Error loading dashboards: " + e.toString());
+    return JSON.stringify({});
+  }
+}
+
+/**
+ * Legacy support - redirected to getDashboards.
+ */
+function loadDashboard() {
+   return getDashboards();
 }
