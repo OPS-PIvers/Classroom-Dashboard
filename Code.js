@@ -128,6 +128,48 @@ function deleteDashboard(name) {
 }
 
 /**
+ * Renames a dashboard.
+ * @param {string} oldName The current name of the dashboard.
+ * @param {string} newName The new name of the dashboard.
+ */
+function renameDashboard(oldName, newName) {
+  try {
+    const sheet = getSheet();
+    const userEmail = Session.getActiveUser().getEmail();
+    if (!userEmail) throw new Error("Could not identify user.");
+
+    const { row, dashboards } = getUserData(sheet, userEmail);
+
+    if (dashboards[oldName] === undefined) {
+      return { success: false, message: "Dashboard not found." };
+    }
+
+    if (dashboards[newName] !== undefined) {
+        return { success: false, message: "Dashboard with this name already exists." };
+    }
+
+    if (!newName || newName.trim() === "") {
+        return { success: false, message: "Name cannot be empty." };
+    }
+
+    dashboards[newName] = dashboards[oldName];
+    delete dashboards[oldName];
+
+    const timestamp = new Date();
+    const newJsonData = JSON.stringify(dashboards);
+    if (row != -1) {
+      sheet.getRange(row, 2).setValue(newJsonData);
+      sheet.getRange(row, 3).setValue(timestamp);
+    }
+
+    return { success: true, message: "Dashboard renamed." };
+  } catch (e) {
+    Logger.log("Error renaming dashboard: " + e.toString());
+    return { success: false, message: "Error renaming dashboard: " + e.message };
+  }
+}
+
+/**
  * Loads all dashboards for the user.
  * @returns {string} JSON string of the map of dashboards.
  */
