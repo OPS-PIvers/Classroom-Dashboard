@@ -1469,11 +1469,7 @@
             else if (type === 'screen') msg = "Screen Only recording started (Simulated)";
             else if (type === 'both') msg = "Voice & Screen recording started (Simulated)";
 
-            if (typeof showToast === 'function') {
-                showToast(msg, 'info');
-            } else {
-                alert(msg);
-            }
+            showToast(msg, 'info');
             // In a real implementation, we would use navigator.mediaDevices.getUserMedia()
             // and MediaRecorder here.
         }
@@ -1498,11 +1494,28 @@
             };
             const colorClass = colors[type] || colors.info;
 
+            const icons = {
+                info: 'fa-circle-info',
+                success: 'fa-check-circle',
+                error: 'fa-circle-exclamation',
+                warning: 'fa-triangle-exclamation'
+            };
+            const iconClass = icons[type] || icons.info;
+
             toast.className = `${colorClass} text-white px-4 py-3 rounded shadow-lg flex items-center gap-2 transform transition-all duration-300 translate-x-full opacity-0 pointer-events-auto`;
-            toast.innerHTML = `
-                <i class="fa-solid ${type === 'success' ? 'fa-check-circle' : type === 'error' ? 'fa-circle-exclamation' : 'fa-circle-info'}"></i>
-                <span class="font-medium text-sm">${message}</span>
-            `;
+
+            // Create icon element
+            const icon = document.createElement('i');
+            icon.className = 'fa-solid ' + iconClass;
+
+            // Create message span and set textContent
+            const messageSpan = document.createElement('span');
+            messageSpan.className = 'font-medium text-sm';
+            messageSpan.textContent = message;
+
+            // Append icon and message to toast
+            toast.appendChild(icon);
+            toast.appendChild(messageSpan);
 
             container.appendChild(toast);
 
