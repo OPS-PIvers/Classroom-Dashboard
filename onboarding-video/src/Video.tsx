@@ -1,5 +1,67 @@
-import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig, Sequence, spring } from 'remotion';
+import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig, Sequence, spring, Img, staticFile } from 'remotion';
 import React from 'react';
+
+// Screenshot component for displaying app screenshots
+const Screenshot: React.FC<{
+    src: string;
+    title: string;
+    description: string;
+}> = ({ src, title, description }) => {
+    const frame = useCurrentFrame();
+    const { fps } = useVideoConfig();
+
+    const slideIn = spring({ frame, fps, from: 50, to: 0 });
+    const opacity = interpolate(frame, [0, 20], [0, 1]);
+    const imageScale = spring({ frame: frame - 10, fps, from: 0.9, to: 1 });
+
+    return (
+        <AbsoluteFill style={{
+            backgroundColor: '#f8fafc',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 60
+        }}>
+            <div style={{
+                transform: `translateY(${slideIn}px)`,
+                opacity,
+                textAlign: 'center',
+                marginBottom: 40
+            }}>
+                <h2 style={{
+                    fontSize: 60,
+                    fontFamily: 'sans-serif',
+                    fontWeight: 'bold',
+                    color: '#1e293b',
+                    margin: 0
+                }}>{title}</h2>
+                <p style={{
+                    fontSize: 30,
+                    fontFamily: 'sans-serif',
+                    color: '#64748b',
+                    marginTop: 15
+                }}>{description}</p>
+            </div>
+            <div style={{
+                transform: `scale(${imageScale})`,
+                opacity,
+                boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+                borderRadius: 12,
+                overflow: 'hidden'
+            }}>
+                <Img
+                    src={staticFile(src)}
+                    style={{
+                        maxWidth: 1400,
+                        maxHeight: 700,
+                        objectFit: 'contain'
+                    }}
+                />
+            </div>
+        </AbsoluteFill>
+    );
+};
 
 // Reusable components
 const Title: React.FC<{ title: string; subtitle?: string }> = ({ title, subtitle }) => {
@@ -113,35 +175,40 @@ export const OnboardingVideo: React.FC = () => {
         <Title title="Classroom Dashboard" subtitle="The Ultimate Teacher's Companion" />
       </Sequence>
 
+      {/* Screenshot: Add dashboard.png to public/ folder */}
       <Sequence from={150} durationInFrames={150}>
-         <Feature
-            title="Essential Widgets"
-            description="Clock, Timer, Traffic Light, and more to manage your class efficiently."
-            icon="⏱️"
-            color="#6366f1"
-         />
+        <Screenshot
+          src="dashboard.png"
+          title="Your Complete Dashboard"
+          description="All your classroom tools in one customizable view"
+        />
       </Sequence>
 
-       <Sequence from={300} durationInFrames={150}>
-         <Feature
-            title="Interactive Tools"
-            description="Random Name Picker, Dice, Polls, and Sound Level Monitor."
-            icon="🎲"
-            color="#ec4899"
-         />
+      {/* Screenshot: Add widgets.png to public/ folder */}
+      <Sequence from={300} durationInFrames={150}>
+        <Screenshot
+          src="widgets.png"
+          title="Essential Widgets"
+          description="Clock, Timer, Traffic Light, and more"
+        />
       </Sequence>
 
-       <Sequence from={450} durationInFrames={150}>
-         <Feature
-            title="Customizable"
-            description="Change backgrounds, resize widgets, and save your layouts."
-            icon="🎨"
-            color="#10b981"
-         />
+      {/* Screenshot: Add interactive.png to public/ folder */}
+      <Sequence from={450} durationInFrames={150}>
+        <Screenshot
+          src="interactive.png"
+          title="Interactive Tools"
+          description="Random Name Picker, Dice, Polls, and Sound Level Monitor"
+        />
       </Sequence>
 
+      {/* Screenshot: Add customization.png to public/ folder */}
       <Sequence from={600} durationInFrames={150}>
-        <WidgetShowcase />
+        <Screenshot
+          src="customization.png"
+          title="Fully Customizable"
+          description="Change backgrounds, resize widgets, and save your layouts"
+        />
       </Sequence>
 
       <Sequence from={750} durationInFrames={150}>
