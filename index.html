@@ -1168,7 +1168,7 @@
                 dragItem.style.top = newY + 'px';
             }
             if (resizeItem) {
-                const dx = e.clientX - initialMouseY; // Corrected: should be e.clientX - initialMouseX
+                const dx = e.clientX - initialMouseX;
                 const dy = e.clientY - initialMouseY;
                 resizeItem.style.width = Math.max(150, initialW + dx) + 'px';
                 resizeItem.style.height = Math.max(100, initialH + dy) + 'px';
