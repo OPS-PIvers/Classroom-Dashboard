@@ -128,6 +128,8 @@
 
     <div id="save-indicator">Saved!</div>
 
+    <div id="toast-container" class="fixed top-4 right-4 z-[100] flex flex-col gap-2"></div>
+
     <!-- TEMPLATES -->
     <template id="tpl-window-frame">
         <div class="flip-container">
@@ -421,7 +423,7 @@
                 currentDashboardName = null;
                 setBg("bg-slate-900");
                 dashboardMenu.classList.add('hidden');
-                alert("New dashboard created. Don't forget to save!");
+                showToast("New dashboard created. Don't forget to save!", "info");
             });
 
 
@@ -1098,7 +1100,7 @@
                     // Refresh list so the new one appears/updates
                     loadDashboardList();
                 })
-                .withFailureHandler(alert)
+                .withFailureHandler(err => showToast("Error saving: " + err, "error"))
                 .saveDashboard(name, jsonState);
         }
 
@@ -1151,16 +1153,60 @@
                 const item = document.createElement('div');
                 item.className = `dashboard-item ${name === currentDashboardName ? 'active' : ''}`;
                 item.innerHTML = `
-                    <span class="truncate font-medium text-sm">${name}</span>
-                    <button class="text-slate-400 hover:text-red-500 btn-delete p-1" title="Delete"><i class="fa-solid fa-trash"></i></button>
+                    <div class="flex-1 flex items-center gap-2 overflow-hidden">
+                        <span class="truncate font-medium text-sm dashboard-name">${name}</span>
+                        <input type="text" class="hidden dashboard-rename-input text-sm border rounded px-1 py-0.5 w-full" value="${name}">
+                    </div>
+                    <div class="flex items-center gap-1">
+                        <button class="text-slate-400 hover:text-blue-500 btn-edit p-1" title="Rename"><i class="fa-solid fa-pencil"></i></button>
+                        <button class="text-slate-400 hover:text-red-500 btn-delete p-1" title="Delete"><i class="fa-solid fa-trash"></i></button>
+                    </div>
                 `;
 
+                const editBtn = item.querySelector('.btn-edit');
+                const nameSpan = item.querySelector('.dashboard-name');
+                const nameInput = item.querySelector('.dashboard-rename-input');
+
+                // Edit Mode
+                editBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    nameSpan.classList.add('hidden');
+                    nameInput.classList.remove('hidden');
+                    nameInput.focus();
+                });
+
+                nameInput.addEventListener('click', (e) => e.stopPropagation());
+
+                nameInput.addEventListener('keydown', (e) => {
+                    if(e.key === 'Enter') nameInput.blur();
+                });
+
+                nameInput.addEventListener('blur', () => {
+                    const newName = nameInput.value.trim();
+                    if(newName && newName !== name) {
+                        google.script.run.withSuccessHandler(res => {
+                             if(res.success) {
+                                 if(currentDashboardName === name) currentDashboardName = newName;
+                                 dashboards[newName] = dashboards[name];
+                                 delete dashboards[name];
+                                 renderDashboardList();
+                                 showToast("Dashboard renamed", "success");
+                             } else {
+                                 showToast(res.message, "error");
+                                 renderDashboardList(); // Reset UI
+                             }
+                        }).renameDashboard(name, newName);
+                    } else {
+                        nameSpan.classList.remove('hidden');
+                        nameInput.classList.add('hidden');
+                    }
+                });
+
                 item.addEventListener('click', (e) => {
-                    if(e.target.closest('.btn-delete')) return; // Don't trigger load if delete clicked
+                    if(e.target.closest('button') || e.target.closest('input')) return;
                     currentDashboardName = name;
                     loadDashboardState(dashboards[name]);
-                    renderDashboardList(); // re-render to update active state
-                    // document.getElementById('dashboards-menu').classList.add('hidden'); // Optional: close menu on select
+                    renderDashboardList();
                 });
 
                 item.querySelector('.btn-delete').addEventListener('click', (e) => {
@@ -1218,13 +1264,9 @@
 
         function showSaveIndicator(response) {
             if(response && response.success) {
-                const indicator = document.getElementById('save-indicator');
-                indicator.style.opacity = '1';
-                setTimeout(() => {
-                    indicator.style.opacity = '0';
-                }, 2000);
+                showToast(response.message || "Saved!", "success");
             } else {
-                alert(response.message);
+                showToast(response.message, "error");
             }
         }
 
@@ -1389,6 +1431,38 @@
                 body.style.backgroundImage = '';
             }
             document.getElementById('bg-menu').classList.add('hidden');
+        }
+
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+
+            const colors = {
+                info: 'bg-blue-500',
+                success: 'bg-green-500',
+                error: 'bg-red-500',
+                warning: 'bg-yellow-500'
+            };
+            const colorClass = colors[type] || colors.info;
+
+            toast.className = `${colorClass} text-white px-4 py-3 rounded shadow-lg flex items-center gap-2 transform transition-all duration-300 translate-x-full opacity-0`;
+            toast.innerHTML = `
+                <i class="fa-solid ${type === 'success' ? 'fa-check-circle' : type === 'error' ? 'fa-circle-exclamation' : 'fa-circle-info'}"></i>
+                <span class="font-medium text-sm">${message}</span>
+            `;
+
+            container.appendChild(toast);
+
+            // Animate in
+            requestAnimationFrame(() => {
+                toast.classList.remove('translate-x-full', 'opacity-0');
+            });
+
+            // Remove after 3s
+            setTimeout(() => {
+                toast.classList.add('translate-x-full', 'opacity-0');
+                toast.addEventListener('transitionend', () => toast.remove());
+            }, 3000);
         }
     </script>
 </body>
