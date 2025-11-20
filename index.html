@@ -438,8 +438,10 @@
 
         function spawnWidget(type, state = null) {
             const id = state ? state.id : nextId++;
-            if (!state) { // If it is a new widget, increment nextId
-               if(id >= nextId) nextId = id + 1;
+
+            // Ensure nextId is always higher than any existing ID to prevent collisions
+            if (id >= nextId) {
+                nextId = id + 1;
             }
             
             const config = getWidgetConfig(type);
