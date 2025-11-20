@@ -66,7 +66,7 @@ const WidgetShowcase: React.FC = () => {
             {widgets.map((w, i) => {
                 const delay = i * 5;
                 const scale = spring({ frame: frame - delay, fps, from: 0, to: 1 });
-                if(frame < delay) return null;
+                if (frame < delay) return null;
 
                 return (
                     <div key={i} style={{
@@ -94,7 +94,6 @@ const WidgetShowcase: React.FC = () => {
 
 const EndScreen: React.FC = () => {
     const frame = useCurrentFrame();
-    const { fps } = useVideoConfig();
     const opacity = interpolate(frame, [0, 30], [0, 1]);
 
     return (

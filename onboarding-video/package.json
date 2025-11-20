@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "scripts": {
     "start": "remotion preview",
-    "build": "remotion render",
+    "build": "remotion render OnboardingVideo out/video.mp4",
     "upgrade": "remotion upgrade",
     "test": "eslint src --ext ts,tsx,js,jsx && tsc"
   },

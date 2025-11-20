@@ -1,4 +1,5 @@
 import { Composition } from 'remotion';
+import React from 'react';
 import { OnboardingVideo } from './Video';
 
 export const RemotionVideo: React.FC = () => {
