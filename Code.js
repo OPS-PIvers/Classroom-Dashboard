@@ -228,6 +228,14 @@ function generateSessionCode() {
 }
 
 /**
+ * Returns the published web app URL.
+ * @returns {string} The script URL.
+ */
+function getScriptUrl() {
+  return ScriptApp.getService().getUrl();
+}
+
+/**
  * Creates a new live session.
  * @param {string} dashboardJson The current dashboard state to share.
  * @returns {object} Result with session code.

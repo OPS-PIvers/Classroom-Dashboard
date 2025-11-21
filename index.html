@@ -1908,18 +1908,21 @@
             // Capture the code before async call
             const code = activeSessionCode;
 
-            // Get the actual published script URL (not the iframe URL)
-            google.script.url.getUrl(function(url) {
-                const separator = url.includes('?') ? '&' : '?';
-                const studentUrl = url + separator + 'join=' + code;
+            // Get the actual published script URL from server
+            google.script.run
+                .withSuccessHandler(function(url) {
+                    const separator = url.includes('?') ? '&' : '?';
+                    const studentUrl = url + separator + 'join=' + code;
 
-                navigator.clipboard.writeText(studentUrl).then(() => {
-                    showToast('Student link copied!', 'success');
-                }).catch(() => {
-                    // Fallback for older browsers
-                    prompt('Copy this link:', studentUrl);
-                });
-            });
+                    navigator.clipboard.writeText(studentUrl).then(() => {
+                        showToast('Student link copied!', 'success');
+                    }).catch(() => {
+                        // Fallback for older browsers
+                        prompt('Copy this link:', studentUrl);
+                    });
+                })
+                .withFailureHandler(err => showToast('Error: ' + err, 'error'))
+                .getScriptUrl();
         }
 
         function endLiveSession() {
