@@ -1929,26 +1929,33 @@
             google.script.run
                 .withSuccessHandler(response => {
                     if (response.success) {
-                        sessionCode = code;
-                        isStudentMode = true;
-                        document.getElementById('student-join-screen').classList.add('hidden');
-                        document.getElementById('student-header').classList.remove('hidden');
-                        document.getElementById('student-session-code').textContent = code;
-                        document.getElementById('app-body').classList.add('pt-12'); // Offset for header
+                        try {
+                            sessionCode = code;
+                            isStudentMode = true;
+                            document.getElementById('student-join-screen').classList.add('hidden');
+                            document.getElementById('student-header').classList.remove('hidden');
+                            document.getElementById('student-session-code').textContent = code;
+                            document.getElementById('app-body').classList.add('pt-12'); // Offset for header
 
-                        // Load initial session data
-                        loadStudentView(response.data);
+                            // Load initial session data
+                            loadStudentView(response.data);
 
-                        // Start polling for updates
-                        sessionPollInterval = setInterval(pollSessionData, 3000);
+                            // Start polling for updates
+                            sessionPollInterval = setInterval(pollSessionData, 3000);
 
-                        showToast('Joined session!', 'success');
+                            showToast('Joined session!', 'success');
+                        } catch (e) {
+                            console.error('Error loading student view:', e);
+                            errorEl.textContent = 'Error loading session: ' + e.message;
+                            errorEl.classList.remove('hidden');
+                        }
                     } else {
                         errorEl.textContent = response.message || 'Session not found';
                         errorEl.classList.remove('hidden');
                     }
                 })
                 .withFailureHandler(err => {
+                    console.error('Join session failed:', err);
                     errorEl.textContent = 'Connection error. Please try again.';
                     errorEl.classList.remove('hidden');
                 })
@@ -2091,7 +2098,7 @@
                 const voteButtons = root.querySelectorAll('.btn-vote');
 
                 // Set labels
-                if (data) {
+                if (data && labels.length >= 2) {
                     labels[0].textContent = data.labelA || 'A';
                     labels[1].textContent = data.labelB || 'B';
                 }
@@ -2158,12 +2165,14 @@
             } else if (w.type === 'text') {
                 // Text - read-only
                 const area = root.querySelector('.widget-content div');
-                if (data) {
-                    area.innerHTML = data.content || '';
-                    area.style.fontSize = (data.fontSize || 18) + 'px';
-                    root.querySelector('.widget-content').style.backgroundColor = data.bgColor || '';
+                if (area) {
+                    if (data) {
+                        area.innerHTML = data.content || '';
+                        area.style.fontSize = (data.fontSize || 18) + 'px';
+                        root.querySelector('.widget-content').style.backgroundColor = data.bgColor || '';
+                    }
+                    area.contentEditable = 'false';
                 }
-                area.contentEditable = 'false';
             } else if (w.type === 'checklist') {
                 // Checklist - read-only
                 const container = root.querySelector('.check-list-container');
