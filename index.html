@@ -1905,15 +1905,16 @@
         function copyStudentLink() {
             if (!activeSessionCode) return;
 
-            // Build the student join URL
-            const baseUrl = window.location.href.split('?')[0];
-            const studentUrl = baseUrl + '?join=' + activeSessionCode;
+            // Get the actual published script URL (not the iframe URL)
+            google.script.url.getUrl(function(url) {
+                const studentUrl = url + '?join=' + activeSessionCode;
 
-            navigator.clipboard.writeText(studentUrl).then(() => {
-                showToast('Student link copied!', 'success');
-            }).catch(() => {
-                // Fallback for older browsers
-                prompt('Copy this link:', studentUrl);
+                navigator.clipboard.writeText(studentUrl).then(() => {
+                    showToast('Student link copied!', 'success');
+                }).catch(() => {
+                    // Fallback for older browsers
+                    prompt('Copy this link:', studentUrl);
+                });
             });
         }
 
