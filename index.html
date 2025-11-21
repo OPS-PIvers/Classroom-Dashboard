@@ -1933,8 +1933,8 @@
                         activeSessionCode = response.code;
                         document.getElementById('session-code-display').textContent = response.code;
                         document.getElementById('session-indicator').classList.remove('hidden');
-                        document.getElementById('btn-start-session').classList.add('hidden');
                         updateSessionMenuState();
+                        document.getElementById('session-menu').classList.add('hidden');
                         showToast('Live session started! Code: ' + response.code, 'success');
                     } else {
                         showToast(response.message || 'Failed to create session', 'error');
@@ -1974,10 +1974,9 @@
                 .withSuccessHandler(response => {
                     if (response.success) {
                         document.getElementById('session-indicator').classList.add('hidden');
-                        document.getElementById('btn-start-session').classList.remove('hidden');
-                        showToast('Session ended', 'info');
                         activeSessionCode = null;
                         updateSessionMenuState();
+                        showToast('Session ended', 'info');
                     }
                 })
                 .withFailureHandler(err => showToast('Error: ' + err, 'error'))
@@ -2183,8 +2182,10 @@
 
         // Add pinned widgets from teacher's session (non-closable)
         function addPinnedWidgets(data) {
-            if (data.widgets) {
-                data.widgets.forEach(s => spawnPinnedWidget(s, data.polls));
+            if (data && data.widgets && data.widgets.length > 0) {
+                data.widgets.forEach(s => spawnPinnedWidget(s, data.polls || {}));
+            } else {
+                console.log('No shared widgets from teacher');
             }
         }
 
