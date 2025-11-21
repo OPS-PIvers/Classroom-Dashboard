@@ -168,6 +168,8 @@
         <h3 class="font-bold text-slate-700 mb-2 flex items-center gap-2"><i class="fa-solid fa-tower-broadcast text-green-600"></i> Live Session</h3>
         <button id="btn-menu-start-session" class="session-menu-opt p-2 rounded-lg hover:bg-green-50 text-slate-700 text-left font-medium"><i class="fa-solid fa-play mr-2 text-green-500"></i> Start Session</button>
         <button id="btn-menu-get-link" class="session-menu-opt p-2 rounded-lg hover:bg-blue-50 text-slate-700 text-left font-medium hidden"><i class="fa-solid fa-link mr-2 text-blue-500"></i> Copy Link</button>
+        <button id="btn-menu-pause" class="session-menu-opt p-2 rounded-lg hover:bg-yellow-50 text-slate-700 text-left font-medium hidden"><i class="fa-solid fa-pause mr-2 text-yellow-500"></i> Pause Session</button>
+        <button id="btn-menu-resume" class="session-menu-opt p-2 rounded-lg hover:bg-green-50 text-slate-700 text-left font-medium hidden"><i class="fa-solid fa-play mr-2 text-green-500"></i> Resume Session</button>
         <button id="btn-menu-capture" class="session-menu-opt p-2 rounded-lg hover:bg-purple-50 text-slate-700 text-left font-medium hidden"><i class="fa-solid fa-camera mr-2 text-purple-500"></i> Capture Screenshots</button>
         <button id="btn-menu-gallery" class="session-menu-opt p-2 rounded-lg hover:bg-indigo-50 text-slate-700 text-left font-medium hidden"><i class="fa-solid fa-images mr-2 text-indigo-500"></i> View Screenshots</button>
         <div class="border-t my-1 hidden" id="session-menu-divider"></div>
@@ -230,6 +232,21 @@
         <button id="btn-leave-session" class="bg-white/20 hover:bg-white/30 px-3 py-1 rounded text-sm">Leave</button>
     </div>
 
+    <!-- Session Paused Overlay -->
+    <div id="student-paused-overlay" class="fixed inset-0 bg-slate-900/95 z-[1000] hidden flex flex-col items-center justify-center text-white">
+        <div class="text-6xl mb-4 text-yellow-400 animate-bounce"><i class="fa-solid fa-pause"></i></div>
+        <h2 class="text-3xl font-bold mb-2">Session Paused</h2>
+        <p class="text-slate-400">Eyes up front, please!</p>
+    </div>
+
+    <!-- Session Ended Overlay -->
+    <div id="student-ended-overlay" class="fixed inset-0 bg-slate-900 z-[1000] hidden flex flex-col items-center justify-center text-white">
+        <div class="text-6xl mb-4 text-red-500"><i class="fa-solid fa-stop-circle"></i></div>
+        <h2 class="text-3xl font-bold mb-2">Session Ended</h2>
+        <p class="text-slate-400 mb-8">This session is no longer available.</p>
+        <button onclick="location.reload()" class="bg-indigo-600 px-6 py-3 rounded-xl font-bold hover:bg-indigo-700">Return to Home</button>
+    </div>
+
     <!-- TEMPLATES -->
     <template id="tpl-window-frame">
         <div class="flip-container">
@@ -253,7 +270,13 @@
                         <h3 class="font-bold text-slate-700">Settings</h3>
                         <button class="text-sm bg-indigo-100 text-indigo-600 px-2 py-1 rounded hover:bg-indigo-200 btn-settings-done">Done</button>
                     </div>
-                    <div class="settings-container"></div>
+                    <div class="settings-container mb-2"></div>
+                    <div class="border-t pt-2 mt-2">
+                        <div class="flex items-center gap-2">
+                            <input type="checkbox" class="inp-interact accent-indigo-600">
+                            <span class="text-sm text-slate-700">Allow Student Interaction</span>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -521,6 +544,8 @@
         let sessionCode = null;
         let sessionPollInterval = null;
         let activeSessionCode = null; // For teacher
+        let pushUpdateInterval = null; // For teacher
+        let sessionPaused = false;
 
         // Recording State
         let mediaRecorder = null;
@@ -603,6 +628,8 @@
             document.getElementById('btn-start-session').addEventListener('click', toggleSessionMenu);
             document.getElementById('btn-menu-start-session').addEventListener('click', () => { startLiveSession(); document.getElementById('session-menu').classList.add('hidden'); });
             document.getElementById('btn-menu-get-link').addEventListener('click', copyStudentLink);
+            document.getElementById('btn-menu-pause').addEventListener('click', () => togglePause(true));
+            document.getElementById('btn-menu-resume').addEventListener('click', () => togglePause(false));
             document.getElementById('btn-menu-capture').addEventListener('click', requestScreenshots);
             document.getElementById('btn-menu-gallery').addEventListener('click', openScreenshotGallery);
             document.getElementById('btn-menu-end-session').addEventListener('click', () => { endLiveSession(); document.getElementById('session-menu').classList.add('hidden'); });
@@ -696,6 +723,15 @@
             const settingsArea = skeleton.querySelector('.settings-container');
             settingsArea.id = 'settings-' + id;
 
+            // Interaction Checkbox
+            const inpInteract = skeleton.querySelector('.inp-interact');
+            if (state && state.allowInteraction) {
+                inpInteract.checked = true;
+            }
+            inpInteract.addEventListener('change', () => {
+                // If teacher toggles this, it will be picked up in the next push
+            });
+
             el.appendChild(skeleton);
             document.getElementById('app-container').appendChild(el);
 
@@ -736,6 +772,22 @@
 
         function initWidgetLogic(w, state) {
             const root = w.el;
+
+            // Helper for teacher-side interaction sync
+            const debouncedUpdate = debounce((newState) => {
+                // Only sync if we are live AND the widget allows interaction
+                const isInteractive = document.getElementById(`flipper-${w.id}`).querySelector('.inp-interact').checked;
+                if(activeSessionCode && isInteractive) {
+                    google.script.run.updateWidgetState(activeSessionCode, w.id, JSON.stringify(newState));
+                }
+            }, 1000);
+
+            // Monitor interaction checkbox toggle
+            const inpInteract = document.getElementById(`flipper-${w.id}`).querySelector('.inp-interact');
+            inpInteract.addEventListener('change', () => {
+                // If toggled, push full update immediately to save the 'allowInteraction' flag
+                pushSessionUpdate();
+            });
 
             if (w.type === 'clock') {
                 const timeEl = root.querySelector('[data-id="time"]');
@@ -828,6 +880,7 @@
                     light.addEventListener('click', () => {
                         lights.forEach(l => l.classList.remove('active'));
                         light.classList.add('active');
+                        debouncedUpdate({ active: light.dataset.color });
                     });
                 });
                 
@@ -848,6 +901,15 @@
                     slider.value = state.fontSize;
                     contentArea.style.backgroundColor = state.bgColor;
                 }
+
+                // Listen for changes to sync
+                area.addEventListener('input', () => {
+                     debouncedUpdate({
+                         content: area.innerHTML,
+                         fontSize: slider.value,
+                         bgColor: contentArea.style.backgroundColor
+                     });
+                });
 
                 slider.addEventListener('input', () => {
                     area.style.fontSize = slider.value + 'px';
@@ -880,8 +942,19 @@
                     items.forEach((item, i) => {
                         const div = document.createElement('div');
                         div.className = 'check-item flex items-start gap-2 mb-2 p-1 hover:bg-slate-50 rounded';
-                        div.innerHTML = `<input type="checkbox" class="mt-1 accent-indigo-600" id="chk-${w.id}-${i}" ${item.checked ? 'checked' : ''}>` +
+                        const checked = item.checked ? 'checked' : '';
+                        div.innerHTML = `<input type="checkbox" class="mt-1 accent-indigo-600" id="chk-${w.id}-${i}" ${checked}>` +
                                         `<span class="flex-1 text-slate-700 break-words">${item.text}</span>`;
+
+                        // Bind click
+                        div.querySelector('input').addEventListener('change', () => {
+                             debouncedUpdate({ items: w.getState().items });
+                             // Visual update handled by browser/css
+                             const span = div.querySelector('span');
+                             if(div.querySelector('input').checked) { span.classList.add('line-through', 'text-slate-400'); }
+                             else { span.classList.remove('line-through', 'text-slate-400'); }
+                        });
+
                         container.appendChild(div);
                     });
                 }
@@ -1909,8 +1982,32 @@
                 return;
             }
 
-            // Get current dashboard state
-            const state = {
+            const state = getDashboardState();
+
+            google.script.run
+                .withSuccessHandler(response => {
+                    if (response.success) {
+                        activeSessionCode = response.code;
+                        document.getElementById('session-code-display').textContent = response.code;
+                        document.getElementById('session-indicator').classList.remove('hidden');
+                        updateSessionMenuState();
+                        document.getElementById('session-menu').classList.add('hidden');
+                        showToast('Live session started! Code: ' + response.code, 'success');
+
+                        // Start pushing updates AND polling for student interaction
+                        if (pushUpdateInterval) clearInterval(pushUpdateInterval);
+                        pushUpdateInterval = setInterval(teacherSessionLoop, 2000);
+
+                    } else {
+                        showToast(response.message || 'Failed to create session', 'error');
+                    }
+                })
+                .withFailureHandler(err => showToast('Error: ' + err, 'error'))
+                .createSession(JSON.stringify(state));
+        }
+
+        function getDashboardState() {
+            return {
                 bg: document.getElementById('app-body').className,
                 widgets: widgets.map(w => ({
                     id: w.id,
@@ -1922,26 +2019,75 @@
                     z: w.el.style.zIndex,
                     minimized: w.el.classList.contains('minimized'),
                     settings: false,
+                    allowInteraction: w.el.querySelector('.inp-interact').checked,
                     data: w.getState ? w.getState() : {}
                 })),
                 polls: polls
             };
+        }
 
-            google.script.run
-                .withSuccessHandler(response => {
-                    if (response.success) {
-                        activeSessionCode = response.code;
-                        document.getElementById('session-code-display').textContent = response.code;
-                        document.getElementById('session-indicator').classList.remove('hidden');
-                        updateSessionMenuState();
-                        document.getElementById('session-menu').classList.add('hidden');
-                        showToast('Live session started! Code: ' + response.code, 'success');
-                    } else {
-                        showToast(response.message || 'Failed to create session', 'error');
-                    }
-                })
-                .withFailureHandler(err => showToast('Error: ' + err, 'error'))
-                .createSession(JSON.stringify(state));
+        function pushSessionUpdate() {
+            if (!activeSessionCode) return;
+            const state = getDashboardState();
+            google.script.run.withFailureHandler(console.error).updateSession(activeSessionCode, JSON.stringify(state));
+        }
+
+        function teacherSessionLoop() {
+             if (!activeSessionCode) return;
+
+             // 1. Push Structure (this maintains x,y,z and creates/removes widgets)
+             // NOTE: Code.js now preserves 'data' for interactive widgets if we push old data
+             pushSessionUpdate();
+
+             // 2. Poll for Interaction (get data changes from students)
+             google.script.run.withSuccessHandler(res => {
+                 if (res.success && res.data && res.data.widgets) {
+                      res.data.widgets.forEach(serverW => {
+                          const localW = widgets.find(w => w.id === serverW.id);
+                          if (localW && serverW.allowInteraction) {
+                               // Update local content if not currently focused (to avoid overwriting typing)
+                               // Traffic light, checkboxes are safe to update always?
+                               // Text widget needs focus check.
+                               const root = localW.el;
+                               const isFocused = root.contains(document.activeElement);
+
+                               // Check if data is different
+                               const localData = localW.getState();
+                               // Simple JSON compare?
+                               if (JSON.stringify(localData) !== JSON.stringify(serverW.data)) {
+                                    if (localW.type === 'text' && isFocused) {
+                                        // Skip text update if teacher is typing
+                                    } else {
+                                        updateWidgetContent({el: root, type: localW.type}, {data: serverW.data}, res.data.polls);
+                                        // Also update internal state refs if any?
+                                        // updateWidgetContent handles visual DOM. getState reads from DOM. So we are good.
+                                    }
+                               }
+                          }
+                      });
+
+                      // Also update polls (always two-way)
+                      if(res.data.polls) {
+                          polls = res.data.polls;
+                          widgets.forEach(w => {
+                              if(w.type === 'poll') {
+                                  updatePollVisuals(w.el.querySelector('.widget-content'), polls[w.id] || [0,0]);
+                              }
+                          });
+                      }
+                 }
+             }).getSessionData(activeSessionCode);
+        }
+
+        function togglePause(pause) {
+             if (!activeSessionCode) return;
+             google.script.run.withSuccessHandler(res => {
+                 if (res.success) {
+                     sessionPaused = res.paused;
+                     updateSessionMenuState();
+                     showToast(sessionPaused ? "Session Paused" : "Session Resumed", "info");
+                 }
+             }).setSessionPaused(activeSessionCode, pause);
         }
 
         function copyStudentLink() {
@@ -1970,11 +2116,14 @@
         function endLiveSession() {
             if (!activeSessionCode) return;
 
+            if (pushUpdateInterval) clearInterval(pushUpdateInterval);
+
             google.script.run
                 .withSuccessHandler(response => {
                     if (response.success) {
                         document.getElementById('session-indicator').classList.add('hidden');
                         activeSessionCode = null;
+                        sessionPaused = false;
                         updateSessionMenuState();
                         showToast('Session ended', 'info');
                     }
@@ -1995,6 +2144,10 @@
             const hasSession = !!activeSessionCode;
             document.getElementById('btn-menu-start-session').classList.toggle('hidden', hasSession);
             document.getElementById('btn-menu-get-link').classList.toggle('hidden', !hasSession);
+
+            document.getElementById('btn-menu-pause').classList.toggle('hidden', !hasSession || sessionPaused);
+            document.getElementById('btn-menu-resume').classList.toggle('hidden', !hasSession || !sessionPaused);
+
             document.getElementById('btn-menu-capture').classList.toggle('hidden', !hasSession);
             document.getElementById('btn-menu-gallery').classList.toggle('hidden', !hasSession);
             document.getElementById('btn-menu-end-session').classList.toggle('hidden', !hasSession);
@@ -2344,6 +2497,14 @@
             google.script.run
                 .withSuccessHandler(response => {
                     if (response.success && response.active) {
+                        // Handle paused state
+                        const pausedOverlay = document.getElementById('student-paused-overlay');
+                        if (response.data.paused) {
+                            pausedOverlay.classList.remove('hidden');
+                        } else {
+                            pausedOverlay.classList.add('hidden');
+                        }
+
                         // Update view with new data
                         updateStudentView(response.data);
 
@@ -2354,8 +2515,7 @@
                     } else if (!response.active) {
                         // Session ended
                         clearInterval(sessionPollInterval);
-                        showToast('Session has ended', 'warning');
-                        leaveSession();
+                        document.getElementById('student-ended-overlay').classList.remove('hidden');
                     }
                 })
                 .withFailureHandler(err => {
@@ -2365,36 +2525,127 @@
         }
 
         function loadStudentView(data) {
-            // Clear existing widgets
+            // Initial load uses the same logic as update but first clears everything
             widgets.forEach(w => w.el.remove());
             widgets = [];
 
-            // Set background
-            if (data.bg) {
-                setBg(data.bg.replace('h-screen w-screen overflow-hidden transition-colors duration-500 ', ''));
-            }
-
-            // Spawn widgets in student mode
-            if (data.widgets) {
-                data.widgets.forEach(s => spawnStudentWidget(s, data.polls));
-            }
+            updateStudentView(data);
         }
 
         function updateStudentView(data) {
-            // Update poll counts from session data
-            if (data.polls) {
-                widgets.forEach(w => {
-                    if (w.type === 'poll') {
-                        // Use originalId for pinned widgets, regular id otherwise
-                        const pollId = w.originalId || w.id;
-                        if (data.polls[pollId]) {
-                            const pollData = data.polls[pollId];
-                            const counts = [pollData.A || 0, pollData.B || 0];
-                            updatePollVisuals(w.el.querySelector('.widget-content'), counts);
+            // 1. Update Background
+             if (data.bg) {
+                setBg(data.bg.replace('h-screen w-screen overflow-hidden transition-colors duration-500 ', ''));
+            }
+
+            // 2. Sync Widgets
+            const serverWidgets = data.widgets || [];
+            const currentIds = widgets.map(w => w.id);
+            const serverIds = serverWidgets.map(sw => sw.id);
+
+            // Remove widgets that are no longer on server (except pinned/personal ones? Assuming full mirror for now)
+            // Note: We should preserve personal widgets if possible, but requirements say "Screen Mirror".
+            // "Widgets open on teacher dashboard automatically open when the student loads the URL... It should be a slightly delayed screen mirror."
+            // However, we previously implemented "Personal Dashboard" + "Pinned Widgets".
+            // The requirement says: "Any Widgets that are open on the teacher dashboard automatically open... It should be a slightly delayed screen mirror."
+            // This implies we should strictly mirror the teacher's dashboard.
+            // But we also have the "Join Session" flow that loads personal dashboard first?
+            // Let's assume `widgets` array contains BOTH personal and teacher widgets if we merged them.
+            // BUT, `updateStudentView` receives `response.data` which is ONLY teacher's session data.
+            // If we just sync to that, we lose personal widgets.
+            // Strategy: Track which widgets are "session widgets" vs "personal widgets".
+            // For now, to satisfy "Screen Mirror", let's treat the student view as a mirror + maybe local tools.
+            // Let's match the server widgets by ID.
+
+            // Identify widgets that came from session (we can tag them)
+            // Or simply: Iterate server widgets. Update if exists. Create if new.
+            // What about removing? Only remove widgets that we know are from the session.
+
+            // Let's simplify: The requirement implies the student sees what the teacher sees.
+            // So we should probably synchronize the list.
+
+            serverWidgets.forEach(sw => {
+                const existing = widgets.find(w => w.id === sw.id);
+                if (existing) {
+                    // Update Position & Size
+                    existing.el.style.left = sw.x + 'px';
+                    existing.el.style.top = sw.y + 'px';
+                    existing.el.style.width = sw.w + 'px';
+                    existing.el.style.height = sw.h + 'px';
+                    existing.el.style.zIndex = sw.z;
+
+                    // Update State (Content) if not interacting locally
+                    // If allowInteraction is true, we might want to be careful not to overwrite while user is typing.
+                    // But for now, server wins to keep sync.
+                    updateWidgetContent(existing, sw, data.polls);
+
+                    // Update Interaction State
+                    if (sw.allowInteraction) {
+                         existing.el.classList.remove('pointer-events-none');
+                         // enable inputs
+                         existing.el.querySelectorAll('input, textarea, button').forEach(el => el.disabled = false);
+                    } else {
+                        // If it's not a poll (polls are always interactive for voting), disable
+                        if(existing.type !== 'poll') {
+                             existing.el.classList.add('pointer-events-none');
                         }
                     }
-                });
-            }
+
+                } else {
+                    // Create new
+                    spawnStudentWidget(sw, data.polls);
+                }
+            });
+
+            // Remove widgets that are in our local "session" list but not in server list
+            // (We need to know which ones are session widgets. Let's mark them.)
+            widgets = widgets.filter(w => {
+                const isSessionWidget = w.isSessionWidget; // We need to set this flag on spawn
+                if (isSessionWidget) {
+                    const stillExists = serverIds.includes(w.id);
+                    if (!stillExists) {
+                        w.el.remove();
+                        return false;
+                    }
+                }
+                return true;
+            });
+        }
+
+        function updateWidgetContent(widget, state, polls) {
+             // Helper to update inner content based on type
+             const root = widget.el;
+             const data = state.data;
+
+             if (widget.type === 'text') {
+                 const area = root.querySelector('.widget-content div');
+                 if(area && area.innerHTML !== data.content) area.innerHTML = data.content || '';
+                 root.querySelector('.widget-content').style.backgroundColor = data.bgColor || '';
+             }
+             else if (widget.type === 'traffic') {
+                 const lights = root.querySelectorAll('.traffic-light');
+                 lights.forEach(l => l.classList.remove('active'));
+                 if (data && data.active) {
+                    const activeLight = root.querySelector(`.traffic-light[data-color="${data.active}"]`);
+                    if (activeLight) activeLight.classList.add('active');
+                 }
+             }
+             else if (widget.type === 'timer') {
+                  const display = root.querySelector('[data-id="display"]');
+                  // Simple sync of time display if we want to be precise?
+                  // Or just start time? Timers are hard to sync perfectly without offset.
+                  // For now, just showing initial time or if we sync current time remaining.
+                  // The teacher sends `initialTime` in data usually.
+                  // If we want live countdown sync, teacher needs to send `remainingTime` or `endTime`.
+                  // Current implementation sends `initialTime`.
+                  // Let's just update if it changed significantly.
+             }
+             else if (widget.type === 'poll') {
+                  if (polls && polls[widget.id]) {
+                      updatePollVisuals(root.querySelector('.widget-content'), [polls[widget.id].A, polls[widget.id].B]);
+                  }
+             }
+             // Add other types as needed
         }
 
         function spawnStudentWidget(state, sessionPolls) {
@@ -2441,19 +2692,32 @@
                 contentArea.appendChild(clone);
             }
 
-            const widget = { id, type, el };
+            // Mark as session widget for sync logic
+            const widget = { id, type, el, isSessionWidget: true };
             widgets.push(widget);
 
             // Initialize widget for student view
             initStudentWidgetLogic(widget, state.data, sessionPolls);
+
+            // Initial interaction check
+            if (state.allowInteraction) {
+                 el.classList.remove('pointer-events-none');
+            } else {
+                 if(type !== 'poll') el.classList.add('pointer-events-none');
+            }
         }
 
         function initStudentWidgetLogic(w, data, sessionPolls) {
             const root = w.el;
+            const debouncedUpdate = debounce((newState) => {
+                if(isStudentMode && sessionCode) {
+                    google.script.run.updateWidgetState(sessionCode, w.id, JSON.stringify(newState));
+                }
+            }, 1000);
 
             // Only initialize interactive elements for students
             if (w.type === 'poll') {
-                const labels = root.querySelectorAll('.opt-label');
+                 const labels = root.querySelectorAll('.opt-label');
                 const voteButtons = root.querySelectorAll('.btn-vote');
 
                 // Set labels
@@ -2497,7 +2761,7 @@
                     });
                 });
             } else if (w.type === 'clock') {
-                // Clock - same as teacher
+                 // Clock - same as teacher
                 const timeEl = root.querySelector('[data-id="time"]');
                 const dateEl = root.querySelector('[data-id="date"]');
 
@@ -2514,50 +2778,122 @@
                 };
                 update();
             } else if (w.type === 'traffic') {
-                // Show traffic light state
-                const lights = root.querySelectorAll('.traffic-light');
-                lights.forEach(l => l.style.pointerEvents = 'none'); // Disable clicks
+                 const lights = root.querySelectorAll('.traffic-light');
+                 // Logic for interaction
+                 lights.forEach(light => {
+                    light.addEventListener('click', () => {
+                         if(root.classList.contains('pointer-events-none')) return; // Double check
+                         lights.forEach(l => l.classList.remove('active'));
+                         light.classList.add('active');
+                         debouncedUpdate({ active: light.dataset.color });
+                    });
+                });
+
+                // Set Initial
                 if (data && data.active) {
                     const activeLight = root.querySelector(`.traffic-light[data-color="${data.active}"]`);
                     if (activeLight) activeLight.classList.add('active');
                 }
             } else if (w.type === 'text') {
-                // Text - read-only
-                const area = root.querySelector('.widget-content div');
+                 const area = root.querySelector('.widget-content div');
                 if (area) {
                     if (data) {
                         area.innerHTML = data.content || '';
                         area.style.fontSize = (data.fontSize || 18) + 'px';
                         root.querySelector('.widget-content').style.backgroundColor = data.bgColor || '';
                     }
-                    area.contentEditable = 'false';
+                    // Enable edit if allowed
+                    area.contentEditable = 'true';
+                    // But we need to listen for changes
+                    area.addEventListener('input', () => {
+                         debouncedUpdate({
+                             content: area.innerHTML,
+                             fontSize: parseInt(area.style.fontSize || 18),
+                             bgColor: root.querySelector('.widget-content').style.backgroundColor
+                         });
+                    });
                 }
             } else if (w.type === 'checklist') {
-                // Checklist - read-only
-                const container = root.querySelector('.check-list-container');
+                 const container = root.querySelector('.check-list-container');
                 if (data && data.items) {
                     container.innerHTML = '';
                     data.items.forEach((item, i) => {
                         const div = document.createElement('div');
                         div.className = 'check-item flex items-start gap-2 mb-2 p-1';
-                        div.innerHTML = `<input type="checkbox" class="mt-1 accent-indigo-600" ${item.checked ? 'checked' : ''} disabled>` +
+                        const checked = item.checked ? 'checked' : '';
+                        div.innerHTML = `<input type="checkbox" class="mt-1 accent-indigo-600" ${checked}>` +
                             `<span class="flex-1 text-slate-700 break-words ${item.checked ? 'line-through text-slate-400' : ''}">${item.text}</span>`;
+
+                        // Bind click
+                        const chk = div.querySelector('input');
+                        chk.addEventListener('change', () => {
+                             const items = [];
+                             container.querySelectorAll('.check-item').forEach(row => {
+                                 items.push({
+                                     text: row.querySelector('span').textContent,
+                                     checked: row.querySelector('input').checked
+                                 });
+                             });
+                             debouncedUpdate({ items });
+                             // Also update visual immediately
+                             const span = div.querySelector('span');
+                             if(chk.checked) { span.classList.add('line-through', 'text-slate-400'); }
+                             else { span.classList.remove('line-through', 'text-slate-400'); }
+                        });
+
                         container.appendChild(div);
                     });
                 }
             } else if (w.type === 'timer') {
-                // Timer - show current state
+                // Timer logic (simplified)
+                // If student interacts, they can start/stop/reset?
+                // Re-using teacher logic but injecting debounce update
                 const display = root.querySelector('[data-id="display"]');
-                if (data) {
-                    const time = data.initialTime || 300;
+                let time = data ? data.initialTime : 300;
+                let interval;
+
+                const updateDisplay = () => {
                     const m = Math.floor(time / 60).toString().padStart(2, '0');
                     const s = (time % 60).toString().padStart(2, '0');
                     display.textContent = m + ':' + s;
-                }
-                // Hide controls
-                root.querySelectorAll('.btn-start, .btn-pause, .btn-reset').forEach(btn => btn.style.display = 'none');
+                };
+
+                // If data provided, set initial
+                if(data) updateDisplay();
+
+                root.querySelector('.btn-start').addEventListener('click', () => {
+                    clearInterval(interval);
+                    interval = setInterval(() => {
+                        if (time > 0) {
+                            time--;
+                            updateDisplay();
+                        } else {
+                            clearInterval(interval);
+                        }
+                    }, 1000);
+                    // How to sync timer state? Just sending initialTime?
+                    // Real-time sync is hard. Maybe just let them start it locally.
+                });
+
+                // Show controls if allowed
+                root.querySelectorAll('.btn-start, .btn-pause, .btn-reset').forEach(btn => btn.style.display = '');
+
+            } else if (w.type === 'dice') {
+                 const btn = root.querySelector('.btn-roll');
+                 const container = root.querySelector('.dice-container');
+                 // Re-bind
+                 btn.addEventListener('click', () => {
+                    // Dice logic
+                    const count = parseInt(data.count || 1);
+                    container.innerHTML = '';
+                     for(let i=0; i<count; i++) {
+                        const val = Math.ceil(Math.random() * 6);
+                        container.innerHTML += `<i class="fa-solid fa-dice-${['one', 'two', 'three', 'four', 'five', 'six'][val-1]} text-6xl text-indigo-600 animate-bounce"></i>`;
+                    }
+                    // Sync? Dice is usually ephemeral. Maybe don't sync dice roll unless we store result in state.
+                 });
+
             } else if (w.type === 'timetable') {
-                // Timetable - read-only
                 const tbody = root.querySelector('.timetable-body');
                 const emptyMsg = root.querySelector('.empty-msg');
                 if (data && data.data) {
@@ -2577,7 +2913,6 @@
                     }
                 }
             } else if (w.type === 'qr') {
-                // QR code
                 const img = root.querySelector('.qr-img');
                 const txt = root.querySelector('[data-id="url-display"]');
                 if (data && data.url) {
@@ -2585,7 +2920,14 @@
                     txt.textContent = data.url;
                 }
             }
-            // Other widgets can be added as needed
+        }
+
+        function debounce(func, wait) {
+            let timeout;
+            return function(...args) {
+                clearTimeout(timeout);
+                timeout = setTimeout(() => func.apply(this, args), wait);
+            };
         }
     </script>
 </body>
