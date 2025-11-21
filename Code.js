@@ -473,3 +473,122 @@ function getActiveSession() {
     return { success: false };
   }
 }
+
+// ==================== SCREENSHOT FUNCTIONS ====================
+
+/**
+ * Teacher requests screenshots from all students.
+ * @param {string} code The session code.
+ */
+function requestScreenshots(code) {
+  try {
+    const sheet = getSessionSheet();
+    const userEmail = Session.getActiveUser().getEmail();
+    const data = sheet.getDataRange().getValues();
+
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] === code && data[i][1] === userEmail && data[i][4] === true) {
+        const sessionData = JSON.parse(data[i][2]);
+        sessionData.screenshotRequest = Date.now();
+        sessionData.screenshots = []; // Clear previous screenshots
+        sheet.getRange(i + 1, 3).setValue(JSON.stringify(sessionData));
+        return { success: true };
+      }
+    }
+
+    return { success: false, message: "Session not found or not authorized." };
+  } catch (e) {
+    Logger.log("Error requesting screenshots: " + e.toString());
+    return { success: false, message: "Error: " + e.message };
+  }
+}
+
+/**
+ * Student submits their screenshot.
+ * @param {string} code The session code.
+ * @param {string} imageData Base64 image data.
+ */
+function submitScreenshot(code, imageData) {
+  try {
+    const sheet = getSessionSheet();
+    const userEmail = Session.getActiveUser().getEmail();
+    const data = sheet.getDataRange().getValues();
+
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] === code.toUpperCase() && data[i][4] === true) {
+        const sessionData = JSON.parse(data[i][2]);
+
+        if (!sessionData.screenshots) sessionData.screenshots = [];
+
+        // Add screenshot
+        sessionData.screenshots.push({
+          studentEmail: userEmail,
+          data: imageData,
+          timestamp: Date.now()
+        });
+
+        sheet.getRange(i + 1, 3).setValue(JSON.stringify(sessionData));
+        return { success: true };
+      }
+    }
+
+    return { success: false, message: "Session not found." };
+  } catch (e) {
+    Logger.log("Error submitting screenshot: " + e.toString());
+    return { success: false, message: "Error: " + e.message };
+  }
+}
+
+/**
+ * Teacher gets all screenshots.
+ * @param {string} code The session code.
+ */
+function getScreenshots(code) {
+  try {
+    const sheet = getSessionSheet();
+    const userEmail = Session.getActiveUser().getEmail();
+    const data = sheet.getDataRange().getValues();
+
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] === code && data[i][1] === userEmail && data[i][4] === true) {
+        const sessionData = JSON.parse(data[i][2]);
+        return {
+          success: true,
+          screenshots: sessionData.screenshots || []
+        };
+      }
+    }
+
+    return { success: false, message: "Session not found or not authorized." };
+  } catch (e) {
+    Logger.log("Error getting screenshots: " + e.toString());
+    return { success: false, message: "Error: " + e.message };
+  }
+}
+
+/**
+ * Teacher clears all screenshots.
+ * @param {string} code The session code.
+ */
+function clearScreenshots(code) {
+  try {
+    const sheet = getSessionSheet();
+    const userEmail = Session.getActiveUser().getEmail();
+    const data = sheet.getDataRange().getValues();
+
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] === code && data[i][1] === userEmail && data[i][4] === true) {
+        const sessionData = JSON.parse(data[i][2]);
+        sessionData.screenshots = [];
+        sessionData.screenshotRequest = null;
+        sheet.getRange(i + 1, 3).setValue(JSON.stringify(sessionData));
+        return { success: true };
+      }
+    }
+
+    return { success: false, message: "Session not found or not authorized." };
+  } catch (e) {
+    Logger.log("Error clearing screenshots: " + e.toString());
+    return { success: false, message: "Error: " + e.message };
+  }
+}

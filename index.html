@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Classroom Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=Patrick+Hand&family=Roboto+Mono:wght@500&display=swap');
@@ -160,6 +161,34 @@
             <div class="text-sm text-slate-500 italic">Loading...</div>
         </div>
         <button id="btn-new-dashboard" class="mt-2 p-2 rounded-lg bg-indigo-50 text-indigo-600 text-sm font-bold hover:bg-indigo-100 text-center">+ New Dashboard</button>
+    </div>
+
+    <!-- Live Session Menu -->
+    <div id="session-menu" class="fixed bottom-24 right-4 bg-white rounded-xl shadow-xl p-4 hidden z-50 w-56 flex flex-col gap-2">
+        <h3 class="font-bold text-slate-700 mb-2 flex items-center gap-2"><i class="fa-solid fa-tower-broadcast text-green-600"></i> Live Session</h3>
+        <button id="btn-menu-start-session" class="session-menu-opt p-2 rounded-lg hover:bg-green-50 text-slate-700 text-left font-medium"><i class="fa-solid fa-play mr-2 text-green-500"></i> Start Session</button>
+        <button id="btn-menu-get-link" class="session-menu-opt p-2 rounded-lg hover:bg-blue-50 text-slate-700 text-left font-medium hidden"><i class="fa-solid fa-link mr-2 text-blue-500"></i> Copy Link</button>
+        <button id="btn-menu-capture" class="session-menu-opt p-2 rounded-lg hover:bg-purple-50 text-slate-700 text-left font-medium hidden"><i class="fa-solid fa-camera mr-2 text-purple-500"></i> Capture Screenshots</button>
+        <button id="btn-menu-gallery" class="session-menu-opt p-2 rounded-lg hover:bg-indigo-50 text-slate-700 text-left font-medium hidden"><i class="fa-solid fa-images mr-2 text-indigo-500"></i> View Screenshots</button>
+        <div class="border-t my-1 hidden" id="session-menu-divider"></div>
+        <button id="btn-menu-end-session" class="session-menu-opt p-2 rounded-lg hover:bg-red-50 text-red-600 text-left font-medium hidden"><i class="fa-solid fa-stop mr-2"></i> End Session</button>
+    </div>
+
+    <!-- Screenshot Gallery Modal -->
+    <div id="screenshot-gallery" class="fixed inset-0 bg-black/50 z-[300] hidden flex items-center justify-center">
+        <div class="bg-white rounded-2xl shadow-2xl p-6 max-w-4xl w-full mx-4 max-h-[80vh] flex flex-col">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold text-slate-800"><i class="fa-solid fa-images text-indigo-500 mr-2"></i>Student Screenshots</h2>
+                <button id="btn-close-gallery" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark fa-lg"></i></button>
+            </div>
+            <div id="screenshot-grid" class="flex-1 overflow-y-auto grid grid-cols-2 md:grid-cols-3 gap-4">
+                <div class="text-slate-500 italic col-span-full text-center py-8">No screenshots captured yet</div>
+            </div>
+            <div class="mt-4 flex justify-end gap-2">
+                <button id="btn-clear-screenshots" class="px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg text-sm font-medium">Clear All</button>
+                <button id="btn-refresh-screenshots" class="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700"><i class="fa-solid fa-sync mr-1"></i> Refresh</button>
+            </div>
+        </div>
     </div>
 
     <div id="save-indicator">Saved!</div>
@@ -570,12 +599,24 @@
             // Save/Load
             document.getElementById('btn-save').addEventListener('click', handleSaveClick);
 
-            // Session Controls
-            document.getElementById('btn-start-session').addEventListener('click', startLiveSession);
+            // Session Controls - Menu toggle
+            document.getElementById('btn-start-session').addEventListener('click', toggleSessionMenu);
+            document.getElementById('btn-menu-start-session').addEventListener('click', () => { startLiveSession(); document.getElementById('session-menu').classList.add('hidden'); });
+            document.getElementById('btn-menu-get-link').addEventListener('click', copyStudentLink);
+            document.getElementById('btn-menu-capture').addEventListener('click', requestScreenshots);
+            document.getElementById('btn-menu-gallery').addEventListener('click', openScreenshotGallery);
+            document.getElementById('btn-menu-end-session').addEventListener('click', () => { endLiveSession(); document.getElementById('session-menu').classList.add('hidden'); });
+
+            // Session indicator buttons
             document.getElementById('btn-end-session').addEventListener('click', endLiveSession);
             document.getElementById('btn-copy-link').addEventListener('click', copyStudentLink);
             document.getElementById('btn-join-session').addEventListener('click', handleJoinSession);
             document.getElementById('btn-leave-session').addEventListener('click', leaveSession);
+
+            // Screenshot gallery
+            document.getElementById('btn-close-gallery').addEventListener('click', () => document.getElementById('screenshot-gallery').classList.add('hidden'));
+            document.getElementById('btn-refresh-screenshots').addEventListener('click', loadScreenshots);
+            document.getElementById('btn-clear-screenshots').addEventListener('click', clearScreenshots);
 
             // Join code input - auto uppercase and enter key
             const joinInput = document.getElementById('join-code-input');
@@ -1893,6 +1934,7 @@
                         document.getElementById('session-code-display').textContent = response.code;
                         document.getElementById('session-indicator').classList.remove('hidden');
                         document.getElementById('btn-start-session').classList.add('hidden');
+                        updateSessionMenuState();
                         showToast('Live session started! Code: ' + response.code, 'success');
                     } else {
                         showToast(response.message || 'Failed to create session', 'error');
@@ -1935,10 +1977,112 @@
                         document.getElementById('btn-start-session').classList.remove('hidden');
                         showToast('Session ended', 'info');
                         activeSessionCode = null;
+                        updateSessionMenuState();
                     }
                 })
                 .withFailureHandler(err => showToast('Error: ' + err, 'error'))
                 .endSession(activeSessionCode);
+        }
+
+        function toggleSessionMenu() {
+            const menu = document.getElementById('session-menu');
+            menu.classList.toggle('hidden');
+            document.getElementById('bg-menu').classList.add('hidden');
+            document.getElementById('dashboards-menu').classList.add('hidden');
+            document.getElementById('record-menu').classList.add('hidden');
+        }
+
+        function updateSessionMenuState() {
+            const hasSession = !!activeSessionCode;
+            document.getElementById('btn-menu-start-session').classList.toggle('hidden', hasSession);
+            document.getElementById('btn-menu-get-link').classList.toggle('hidden', !hasSession);
+            document.getElementById('btn-menu-capture').classList.toggle('hidden', !hasSession);
+            document.getElementById('btn-menu-gallery').classList.toggle('hidden', !hasSession);
+            document.getElementById('btn-menu-end-session').classList.toggle('hidden', !hasSession);
+            document.getElementById('session-menu-divider').classList.toggle('hidden', !hasSession);
+        }
+
+        function requestScreenshots() {
+            if (!activeSessionCode) return;
+
+            google.script.run
+                .withSuccessHandler(response => {
+                    if (response.success) {
+                        showToast('Screenshot request sent to students', 'success');
+                    }
+                })
+                .withFailureHandler(err => showToast('Error: ' + err, 'error'))
+                .requestScreenshots(activeSessionCode);
+        }
+
+        function openScreenshotGallery() {
+            document.getElementById('screenshot-gallery').classList.remove('hidden');
+            document.getElementById('session-menu').classList.add('hidden');
+            loadScreenshots();
+        }
+
+        function loadScreenshots() {
+            if (!activeSessionCode) return;
+
+            const grid = document.getElementById('screenshot-grid');
+            grid.innerHTML = '<div class="text-slate-500 italic col-span-full text-center py-8">Loading...</div>';
+
+            google.script.run
+                .withSuccessHandler(response => {
+                    if (response.success && response.screenshots && response.screenshots.length > 0) {
+                        grid.innerHTML = '';
+                        response.screenshots.forEach(ss => {
+                            const card = document.createElement('div');
+                            card.className = 'bg-slate-100 rounded-lg overflow-hidden';
+                            card.innerHTML = `
+                                <img src="${ss.data}" class="w-full h-32 object-cover cursor-pointer hover:opacity-80" onclick="window.open('${ss.data}', '_blank')">
+                                <div class="p-2">
+                                    <div class="text-sm font-medium text-slate-700 truncate">${ss.studentEmail || 'Unknown'}</div>
+                                    <div class="text-xs text-slate-400">${new Date(ss.timestamp).toLocaleTimeString()}</div>
+                                </div>
+                            `;
+                            grid.appendChild(card);
+                        });
+                    } else {
+                        grid.innerHTML = '<div class="text-slate-500 italic col-span-full text-center py-8">No screenshots captured yet</div>';
+                    }
+                })
+                .withFailureHandler(err => {
+                    grid.innerHTML = '<div class="text-red-500 col-span-full text-center py-8">Error loading screenshots</div>';
+                })
+                .getScreenshots(activeSessionCode);
+        }
+
+        function clearScreenshots() {
+            if (!activeSessionCode) return;
+            if (!confirm('Clear all screenshots?')) return;
+
+            google.script.run
+                .withSuccessHandler(response => {
+                    if (response.success) {
+                        showToast('Screenshots cleared', 'info');
+                        loadScreenshots();
+                    }
+                })
+                .withFailureHandler(err => showToast('Error: ' + err, 'error'))
+                .clearScreenshots(activeSessionCode);
+        }
+
+        // Student screenshot capture
+        function captureAndSendScreenshot() {
+            if (!sessionCode || !isStudentMode) return;
+
+            html2canvas(document.getElementById('app-container'), {
+                backgroundColor: null,
+                scale: 0.5
+            }).then(canvas => {
+                const imageData = canvas.toDataURL('image/jpeg', 0.6);
+
+                google.script.run
+                    .withSuccessHandler(() => showToast('Screenshot sent to teacher', 'success'))
+                    .withFailureHandler(err => console.error('Screenshot error:', err))
+                    .submitScreenshot(sessionCode, imageData);
+            }).catch(err => console.error('Capture error:', err));
         }
 
         function handleJoinSession() {
@@ -1953,40 +2097,218 @@
 
             errorEl.classList.add('hidden');
 
+            // First, load student's personal dashboard
             google.script.run
-                .withSuccessHandler(response => {
-                    if (response.success) {
+                .withSuccessHandler(dashData => {
+                    // Parse student's dashboards
+                    if (dashData) {
                         try {
-                            sessionCode = code;
-                            isStudentMode = true;
-                            document.getElementById('student-join-screen').classList.add('hidden');
-                            document.getElementById('student-header').classList.remove('hidden');
-                            document.getElementById('student-session-code').textContent = code;
-                            document.getElementById('app-body').classList.add('pt-12'); // Offset for header
-
-                            // Load initial session data
-                            loadStudentView(response.data);
-
-                            // Start polling for updates
-                            sessionPollInterval = setInterval(pollSessionData, 3000);
-
-                            showToast('Joined session!', 'success');
+                            dashboards = JSON.parse(dashData);
+                            // Load first available dashboard or default
+                            const names = Object.keys(dashboards);
+                            if (names.length > 0) {
+                                currentDashboardName = names[0];
+                                const db = dashboards[currentDashboardName];
+                                if (db.bg) setBg(db.bg);
+                                if (db.widgets) {
+                                    db.widgets.forEach(s => spawnWidget(s.type, s));
+                                }
+                            }
                         } catch (e) {
-                            console.error('Error loading student view:', e);
-                            errorEl.textContent = 'Error loading session: ' + e.message;
-                            errorEl.classList.remove('hidden');
+                            console.error('Error loading student dashboard:', e);
                         }
-                    } else {
-                        errorEl.textContent = response.message || 'Session not found';
-                        errorEl.classList.remove('hidden');
                     }
+
+                    // Now join the session and add pinned widgets
+                    google.script.run
+                        .withSuccessHandler(response => {
+                            if (response.success) {
+                                try {
+                                    sessionCode = code;
+                                    isStudentMode = true;
+                                    document.getElementById('student-join-screen').classList.add('hidden');
+                                    document.getElementById('student-header').classList.remove('hidden');
+                                    document.getElementById('student-session-code').textContent = code;
+                                    document.getElementById('app-body').classList.add('pt-12');
+                                    document.getElementById('toolbar-container').classList.remove('hidden');
+
+                                    // Add pinned widgets from teacher's session
+                                    addPinnedWidgets(response.data);
+
+                                    // Start polling for updates
+                                    sessionPollInterval = setInterval(pollSessionData, 3000);
+
+                                    showToast('Joined session! Teacher widgets are pinned.', 'success');
+                                } catch (e) {
+                                    console.error('Error loading student view:', e);
+                                    errorEl.textContent = 'Error loading session: ' + e.message;
+                                    errorEl.classList.remove('hidden');
+                                }
+                            } else {
+                                errorEl.textContent = response.message || 'Session not found';
+                                errorEl.classList.remove('hidden');
+                            }
+                        })
+                        .withFailureHandler(err => {
+                            console.error('Join session failed:', err);
+                            errorEl.textContent = 'Connection error. Please try again.';
+                            errorEl.classList.remove('hidden');
+                        })
+                        .joinSession(code);
                 })
                 .withFailureHandler(err => {
-                    console.error('Join session failed:', err);
-                    errorEl.textContent = 'Connection error. Please try again.';
-                    errorEl.classList.remove('hidden');
+                    console.error('Error loading dashboards:', err);
+                    // Still try to join even if personal dashboard load fails
+                    google.script.run
+                        .withSuccessHandler(response => {
+                            if (response.success) {
+                                sessionCode = code;
+                                isStudentMode = true;
+                                document.getElementById('student-join-screen').classList.add('hidden');
+                                document.getElementById('student-header').classList.remove('hidden');
+                                document.getElementById('student-session-code').textContent = code;
+                                document.getElementById('app-body').classList.add('pt-12');
+                                addPinnedWidgets(response.data);
+                                sessionPollInterval = setInterval(pollSessionData, 3000);
+                                showToast('Joined session!', 'success');
+                            } else {
+                                errorEl.textContent = response.message || 'Session not found';
+                                errorEl.classList.remove('hidden');
+                            }
+                        })
+                        .joinSession(code);
                 })
-                .joinSession(code);
+                .getDashboards();
+        }
+
+        // Add pinned widgets from teacher's session (non-closable)
+        function addPinnedWidgets(data) {
+            if (data.widgets) {
+                data.widgets.forEach(s => spawnPinnedWidget(s, data.polls));
+            }
+        }
+
+        // Spawn a pinned widget that student cannot close
+        function spawnPinnedWidget(state, sessionPolls) {
+            const originalId = state.id; // Keep original ID for poll lookups
+            const id = 'pinned-' + state.id;
+            const type = state.type;
+            const config = getWidgetConfig(type);
+
+            const frameTpl = document.getElementById('tpl-window-frame');
+            if (!frameTpl) return;
+
+            const skeleton = frameTpl.content.cloneNode(true);
+            const el = document.createElement('div');
+            el.className = 'widget';
+            el.id = 'widget-' + id;
+            el.dataset.pinned = 'true';
+            el.dataset.originalId = originalId; // Store original ID for poll submission
+
+            el.style.left = state.x + 'px';
+            el.style.top = state.y + 'px';
+            el.style.width = state.w + 'px';
+            el.style.height = state.h + 'px';
+            el.style.zIndex = 9000; // High z-index for pinned widgets
+
+            skeleton.querySelector('.widget-title-text').textContent = config.title + ' (Shared)';
+            skeleton.querySelector('.widget-icon').className = config.icon;
+
+            // Keep header but remove close button only
+            const header = skeleton.querySelector('.widget-header');
+            header.style.background = '#dcfce7'; // Light green to indicate shared
+            skeleton.querySelector('.btn-settings').remove();
+            skeleton.querySelector('.btn-min').remove();
+            skeleton.querySelector('.btn-close').remove();
+
+            const contentArea = skeleton.querySelector('.widget-content');
+            contentArea.id = 'content-' + id;
+
+            el.appendChild(skeleton);
+            document.getElementById('app-container').appendChild(el);
+
+            const typeTpl = document.getElementById('tpl-' + type);
+            if (typeTpl) {
+                const clone = typeTpl.content.cloneNode(true);
+                const settingsForm = clone.querySelector('.settings-form');
+                if (settingsForm) settingsForm.remove();
+                contentArea.appendChild(clone);
+            }
+
+            const widget = { id, type, el, pinned: true, originalId };
+            widgets.push(widget);
+
+            // Initialize widget logic using original ID for session lookups
+            initPinnedWidgetLogic(widget, state.data, sessionPolls, originalId);
+
+            // Make draggable but not resizable
+            makeDraggable(el);
+        }
+
+        // Initialize pinned widget logic (uses original ID for polls)
+        function initPinnedWidgetLogic(w, data, sessionPolls, originalId) {
+            const root = w.el;
+
+            if (w.type === 'poll') {
+                const labels = root.querySelectorAll('.opt-label');
+                const voteButtons = root.querySelectorAll('.btn-vote');
+
+                if (data && labels.length >= 2) {
+                    labels[0].textContent = data.labelA || 'A';
+                    labels[1].textContent = data.labelB || 'B';
+                }
+
+                // Get initial poll data using original ID
+                let pollData = sessionPolls && sessionPolls[originalId] ? sessionPolls[originalId] : { A: 0, B: 0 };
+                updatePollVisuals(root.querySelector('.widget-content'), [pollData.A, pollData.B]);
+
+                const resetBtn = root.querySelector('.btn-reset');
+                if (resetBtn) resetBtn.remove();
+
+                // Student voting - use original ID
+                voteButtons.forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const idx = parseInt(btn.dataset.idx);
+                        const option = idx === 0 ? 'A' : 'B';
+
+                        voteButtons.forEach(b => {
+                            b.style.pointerEvents = 'none';
+                            b.style.opacity = '0.7';
+                        });
+                        btn.style.opacity = '1';
+                        btn.innerHTML += ' <i class="fa-solid fa-check text-xs"></i>';
+
+                        google.script.run
+                            .withSuccessHandler(response => {
+                                if (response.success) {
+                                    showToast('Vote recorded!', 'success');
+                                    updatePollVisuals(root.querySelector('.widget-content'), [response.polls.A, response.polls.B]);
+                                }
+                            })
+                            .withFailureHandler(err => showToast('Vote failed', 'error'))
+                            .submitPollResponse(sessionCode, originalId, option);
+                    });
+                });
+            } else {
+                // For non-poll widgets, use standard logic
+                initStudentWidgetLogic(w, data, sessionPolls);
+            }
+        }
+
+        function makeDraggable(el) {
+            const header = el.querySelector('.widget-header');
+            if (!header) return;
+
+            header.style.cursor = 'grab';
+            header.addEventListener('mousedown', (e) => {
+                if (e.target.closest('button')) return;
+                dragItem = el;
+                initialMouseX = e.clientX;
+                initialMouseY = e.clientY;
+                initialX = el.offsetLeft;
+                initialY = el.offsetTop;
+                header.style.cursor = 'grabbing';
+            });
         }
 
         function leaveSession() {
@@ -2023,6 +2345,11 @@
                     if (response.success && response.active) {
                         // Update view with new data
                         updateStudentView(response.data);
+
+                        // Check for screenshot request
+                        if (response.data.screenshotRequest && !response.data.screenshotSubmitted) {
+                            captureAndSendScreenshot();
+                        }
                     } else if (!response.active) {
                         // Session ended
                         clearInterval(sessionPollInterval);
@@ -2056,10 +2383,14 @@
             // Update poll counts from session data
             if (data.polls) {
                 widgets.forEach(w => {
-                    if (w.type === 'poll' && data.polls[w.id]) {
-                        const pollData = data.polls[w.id];
-                        const counts = [pollData.A || 0, pollData.B || 0];
-                        updatePollVisuals(w.el.querySelector('.widget-content'), counts);
+                    if (w.type === 'poll') {
+                        // Use originalId for pinned widgets, regular id otherwise
+                        const pollId = w.originalId || w.id;
+                        if (data.polls[pollId]) {
+                            const pollData = data.polls[pollId];
+                            const counts = [pollData.A || 0, pollData.B || 0];
+                            updatePollVisuals(w.el.querySelector('.widget-content'), counts);
+                        }
                     }
                 });
             }
