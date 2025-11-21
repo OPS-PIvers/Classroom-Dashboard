@@ -185,7 +185,10 @@
         <span class="w-3 h-3 bg-white rounded-full animate-pulse"></span>
         <span class="font-bold">LIVE:</span>
         <span id="session-code-display" class="font-mono tracking-wider">------</span>
-        <button id="btn-end-session" class="ml-2 bg-white text-green-600 px-3 py-1 rounded-full text-sm font-bold hover:bg-green-100">End</button>
+        <button id="btn-copy-link" class="ml-2 bg-white/20 hover:bg-white/30 px-3 py-1 rounded-full text-sm font-bold" title="Copy student link">
+            <i class="fa-solid fa-link"></i>
+        </button>
+        <button id="btn-end-session" class="bg-white text-green-600 px-3 py-1 rounded-full text-sm font-bold hover:bg-green-100">End</button>
     </div>
 
     <!-- Student Mode Header -->
@@ -570,6 +573,7 @@
             // Session Controls
             document.getElementById('btn-start-session').addEventListener('click', startLiveSession);
             document.getElementById('btn-end-session').addEventListener('click', endLiveSession);
+            document.getElementById('btn-copy-link').addEventListener('click', copyStudentLink);
             document.getElementById('btn-join-session').addEventListener('click', handleJoinSession);
             document.getElementById('btn-leave-session').addEventListener('click', leaveSession);
 
@@ -1896,6 +1900,21 @@
                 })
                 .withFailureHandler(err => showToast('Error: ' + err, 'error'))
                 .createSession(JSON.stringify(state));
+        }
+
+        function copyStudentLink() {
+            if (!activeSessionCode) return;
+
+            // Build the student join URL
+            const baseUrl = window.location.href.split('?')[0];
+            const studentUrl = baseUrl + '?join=' + activeSessionCode;
+
+            navigator.clipboard.writeText(studentUrl).then(() => {
+                showToast('Student link copied!', 'success');
+            }).catch(() => {
+                // Fallback for older browsers
+                prompt('Copy this link:', studentUrl);
+            });
         }
 
         function endLiveSession() {
