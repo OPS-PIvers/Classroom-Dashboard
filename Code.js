@@ -368,9 +368,32 @@ function updateSession(code, dashboardJson) {
         const existingData = JSON.parse(data[i][2]);
         const newData = JSON.parse(dashboardJson);
 
-        // Preserve poll responses when updating
-        existingData.widgets = newData.widgets || [];
+        // Preserve poll responses and handle interactive widgets
         existingData.bg = newData.bg || existingData.bg;
+        existingData.polls = existingData.polls || {}; // Ensure polls object exists
+
+        // Logic: Full replace of widgets list, BUT preserve 'data' for interactive widgets
+        // if the server has a version that might be newer (from student interaction).
+        // Since we don't have timestamps, we assume:
+        // If a widget allows interaction, we DO NOT overwrite its 'data' from the generic push.
+        // Content updates for interactive widgets must come via updateWidgetState.
+
+        const mergedWidgets = [];
+        if (newData.widgets) {
+            newData.widgets.forEach(newW => {
+                const oldW = existingData.widgets ? existingData.widgets.find(w => w.id === newW.id) : null;
+
+                if (oldW && newW.allowInteraction) {
+                    // Keep the existing data (which includes student updates)
+                    // Unless the teacher explicitly pushed a change?
+                    // We'll assume updateSession is for structure/layout.
+                    // Content changes should use updateWidgetState (which teacher client will also use).
+                    newW.data = oldW.data;
+                }
+                mergedWidgets.push(newW);
+            });
+        }
+        existingData.widgets = mergedWidgets;
 
         sheet.getRange(i + 1, 3).setValue(JSON.stringify(existingData));
         return { success: true };
@@ -381,6 +404,78 @@ function updateSession(code, dashboardJson) {
   } catch (e) {
     Logger.log("Error updating session: " + e.toString());
     return { success: false, message: "Error updating session: " + e.message };
+  }
+}
+
+/**
+ * Pauses or resumes the session.
+ * @param {string} code The session code.
+ * @param {boolean} paused Whether to pause the session.
+ */
+function setSessionPaused(code, paused) {
+  try {
+    const sheet = getSessionSheet();
+    const userEmail = Session.getActiveUser().getEmail();
+    const data = sheet.getDataRange().getValues();
+
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] === code && data[i][1] === userEmail && data[i][4] === true) {
+        const sessionData = JSON.parse(data[i][2]);
+        sessionData.paused = paused;
+        sheet.getRange(i + 1, 3).setValue(JSON.stringify(sessionData));
+        return { success: true, paused: paused };
+      }
+    }
+    return { success: false, message: "Session not found." };
+  } catch (e) {
+    Logger.log("Error setting pause state: " + e);
+    return { success: false, message: e.message };
+  }
+}
+
+/**
+ * Updates a specific widget's state (for student interaction).
+ * @param {string} code Session code.
+ * @param {string} widgetId Widget ID.
+ * @param {string} stateJson JSON string of new state.
+ */
+function updateWidgetState(code, widgetId, stateJson) {
+  try {
+    const sheet = getSessionSheet();
+    // Students can update, so we don't strictly check teacher email here,
+    // but we must verify the session is active.
+    const data = sheet.getDataRange().getValues();
+    const newState = JSON.parse(stateJson);
+
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] === code.toUpperCase() && data[i][4] === true) {
+        const sessionData = JSON.parse(data[i][2]);
+
+        if (sessionData.paused) {
+             return { success: false, message: "Session is paused." };
+        }
+
+        // Find the widget
+        if (sessionData.widgets) {
+            const widget = sessionData.widgets.find(w => w.id == widgetId);
+            if (widget) {
+                // Check if interaction is allowed
+                if (widget.allowInteraction) {
+                    widget.data = newState;
+                    sheet.getRange(i + 1, 3).setValue(JSON.stringify(sessionData));
+                    return { success: true };
+                } else {
+                    return { success: false, message: "Interaction not allowed." };
+                }
+            }
+        }
+        return { success: false, message: "Widget not found." };
+      }
+    }
+    return { success: false, message: "Session not found." };
+  } catch (e) {
+    Logger.log("Error updating widget: " + e);
+    return { success: false, message: e.message };
   }
 }
 
