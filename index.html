@@ -1905,9 +1905,13 @@
         function copyStudentLink() {
             if (!activeSessionCode) return;
 
+            // Capture the code before async call
+            const code = activeSessionCode;
+
             // Get the actual published script URL (not the iframe URL)
             google.script.url.getUrl(function(url) {
-                const studentUrl = url + '?join=' + activeSessionCode;
+                const separator = url.includes('?') ? '&' : '?';
+                const studentUrl = url + separator + 'join=' + code;
 
                 navigator.clipboard.writeText(studentUrl).then(() => {
                     showToast('Student link copied!', 'success');
