@@ -1,22 +1,40 @@
 import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig, Sequence, spring, Img, staticFile } from 'remotion';
 import React from 'react';
 
-// Animated background gradient
-const AnimatedBackground: React.FC<{ children: React.ReactNode; variant?: 'dark' | 'light' | 'gradient' }> = ({ children, variant = 'light' }) => {
+// Color constants
+const COLORS = {
+    TIME_MANAGEMENT: '#6366f1',
+    CLASSROOM_MANAGEMENT: '#10b981',
+    INTERACTIVE_TOOLS: '#f59e0b',
+    CONTENT_MEDIA: '#ec4899',
+    PRIMARY_PURPLE: '#a855f7',
+    DARK_BG: '#0f172a',
+    LIGHT_BG: '#f8fafc',
+    TEXT_PRIMARY: '#1e293b',
+    TEXT_SECONDARY: '#64748b',
+    TEXT_MUTED: '#94a3b8',
+} as const;
+
+// Reusable animated particle component
+const AnimatedParticle: React.FC<{
+    color: string;
+    opacity: number;
+    speed: number;
+    offset: number;
+    size: number;
+}> = ({ color, opacity, speed, offset, size }) => {
     const frame = useCurrentFrame();
 
-    const gradientPosition = interpolate(frame, [0, 300], [0, 100], { extrapolateRight: 'extend' });
-
-    const backgrounds = {
-        dark: '#0f172a',
-        light: '#f8fafc',
-        gradient: `linear-gradient(${135 + gradientPosition * 0.5}deg, #667eea 0%, #764ba2 50%, #f093fb 100%)`
-    };
+    const x = 50 + Math.sin(frame * speed + offset) * size;
+    const y = 50 + Math.cos(frame * speed + offset) * size;
 
     return (
-        <AbsoluteFill style={{ background: backgrounds[variant] }}>
-            {children}
-        </AbsoluteFill>
+        <div style={{
+            position: 'absolute',
+            width: '100%',
+            height: '100%',
+            background: `radial-gradient(circle at ${x}% ${y}%, ${color}${Math.round(opacity * 255).toString(16).padStart(2, '0')} 0%, transparent 50%)`,
+        }} />
     );
 };
 
@@ -34,8 +52,7 @@ const ProgressBar: React.FC<{ progress: number }> = ({ progress }) => {
             <div style={{
                 width: `${progress * 100}%`,
                 height: '100%',
-                background: 'linear-gradient(90deg, #6366f1, #a855f7, #ec4899)',
-                transition: 'width 0.1s ease-out'
+                background: `linear-gradient(90deg, ${COLORS.TIME_MANAGEMENT}, ${COLORS.PRIMARY_PURPLE}, ${COLORS.CONTENT_MEDIA})`
             }} />
         </div>
     );
@@ -47,7 +64,7 @@ const Screenshot: React.FC<{
     title: string;
     description: string;
     accentColor?: string;
-}> = ({ src, title, description, accentColor = '#6366f1' }) => {
+}> = ({ src, title, description, accentColor = COLORS.TIME_MANAGEMENT }) => {
     const frame = useCurrentFrame();
     const { fps, durationInFrames } = useVideoConfig();
 
@@ -65,7 +82,7 @@ const Screenshot: React.FC<{
 
     return (
         <AbsoluteFill style={{
-            backgroundColor: '#f8fafc',
+            backgroundColor: COLORS.LIGHT_BG,
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
@@ -93,7 +110,7 @@ const Screenshot: React.FC<{
                     fontSize: 56,
                     fontFamily: 'system-ui, -apple-system, sans-serif',
                     fontWeight: 700,
-                    color: '#1e293b',
+                    color: COLORS.TEXT_PRIMARY,
                     margin: 0,
                     letterSpacing: '-0.02em'
                 }}>{title}</h2>
@@ -108,7 +125,7 @@ const Screenshot: React.FC<{
                 <p style={{
                     fontSize: 26,
                     fontFamily: 'system-ui, -apple-system, sans-serif',
-                    color: '#64748b',
+                    color: COLORS.TEXT_SECONDARY,
                     margin: 0,
                     fontWeight: 400
                 }}>{description}</p>
@@ -124,6 +141,7 @@ const Screenshot: React.FC<{
             }}>
                 <Img
                     src={staticFile(src)}
+                    alt={`${title} - ${description}`}
                     style={{
                         maxWidth: 1400,
                         maxHeight: 650,
@@ -172,7 +190,7 @@ const CategoryHeader: React.FC<{ title: string; subtitle: string; icon: string; 
                     fontSize: 64,
                     fontFamily: 'system-ui, -apple-system, sans-serif',
                     fontWeight: 700,
-                    color: '#1e293b',
+                    color: COLORS.TEXT_PRIMARY,
                     margin: 0,
                     letterSpacing: '-0.02em'
                 }}>{title}</h2>
@@ -181,7 +199,7 @@ const CategoryHeader: React.FC<{ title: string; subtitle: string; icon: string; 
                 <p style={{
                     fontSize: 28,
                     fontFamily: 'system-ui, -apple-system, sans-serif',
-                    color: '#64748b',
+                    color: COLORS.TEXT_SECONDARY,
                     margin: 0
                 }}>{subtitle}</p>
             </div>
@@ -203,29 +221,28 @@ const Title: React.FC<{ title: string; subtitle?: string }> = ({ title, subtitle
 
     const fadeOut = interpolate(frame, [durationInFrames - 20, durationInFrames], [1, 0], { extrapolateLeft: 'clamp' });
 
-    // Animated gradient
-    const gradientAngle = interpolate(frame, [0, 120], [0, 360]);
-
     return (
         <AbsoluteFill style={{
             justifyContent: 'center',
             alignItems: 'center',
-            backgroundColor: '#0f172a',
+            backgroundColor: COLORS.DARK_BG,
             opacity: fadeOut
         }}>
             {/* Animated background particles */}
-            <div style={{
-                position: 'absolute',
-                width: '100%',
-                height: '100%',
-                background: `radial-gradient(circle at ${50 + Math.sin(frame * 0.02) * 20}% ${50 + Math.cos(frame * 0.02) * 20}%, rgba(99, 102, 241, 0.15) 0%, transparent 50%)`,
-            }} />
-            <div style={{
-                position: 'absolute',
-                width: '100%',
-                height: '100%',
-                background: `radial-gradient(circle at ${50 - Math.sin(frame * 0.015) * 30}% ${50 - Math.cos(frame * 0.015) * 30}%, rgba(168, 85, 247, 0.1) 0%, transparent 50%)`,
-            }} />
+            <AnimatedParticle
+                color={COLORS.TIME_MANAGEMENT}
+                opacity={0.15}
+                speed={0.02}
+                offset={0}
+                size={20}
+            />
+            <AnimatedParticle
+                color={COLORS.PRIMARY_PURPLE}
+                opacity={0.1}
+                speed={0.015}
+                offset={Math.PI}
+                size={30}
+            />
 
             <div style={{
                 opacity: titleOpacity,
@@ -238,8 +255,8 @@ const Title: React.FC<{ title: string; subtitle?: string }> = ({ title, subtitle
                     fontFamily: 'system-ui, -apple-system, sans-serif',
                     fontWeight: 800,
                     margin: 0,
-                    background: `linear-gradient(${gradientAngle}deg, #6366f1, #a855f7, #ec4899, #6366f1)`,
-                    backgroundSize: '300% 300%',
+                    background: `linear-gradient(90deg, ${COLORS.TIME_MANAGEMENT}, ${COLORS.PRIMARY_PURPLE}, ${COLORS.CONTENT_MEDIA})`,
+                    backgroundClip: 'text',
                     WebkitBackgroundClip: 'text',
                     color: 'transparent',
                     letterSpacing: '-0.03em'
@@ -250,7 +267,7 @@ const Title: React.FC<{ title: string; subtitle?: string }> = ({ title, subtitle
                         fontFamily: 'system-ui, -apple-system, sans-serif',
                         fontWeight: 400,
                         marginTop: 25,
-                        color: '#94a3b8',
+                        color: COLORS.TEXT_MUTED,
                         opacity: subtitleOpacity,
                         transform: `translateY(${subtitleY}px)`,
                         letterSpacing: '0.05em'
@@ -275,11 +292,9 @@ const EndScreen: React.FC = () => {
     const ctaOpacity = interpolate(frame, [50, 70], [0, 1], { extrapolateRight: 'clamp' });
     const ctaScale = spring({ frame: frame - 40, fps, from: 0.8, to: 1, config: { damping: 10, stiffness: 100 } });
 
-    const gradientAngle = interpolate(frame, [0, 120], [0, 360]);
-
     return (
         <AbsoluteFill style={{
-            backgroundColor: '#0f172a',
+            backgroundColor: COLORS.DARK_BG,
             justifyContent: 'center',
             alignItems: 'center',
             flexDirection: 'column'
@@ -310,7 +325,7 @@ const EndScreen: React.FC = () => {
             <h2 style={{
                 fontSize: 32,
                 fontFamily: 'system-ui, -apple-system, sans-serif',
-                color: '#94a3b8',
+                color: COLORS.TEXT_MUTED,
                 marginTop: 25,
                 opacity: subtitleOpacity,
                 transform: `translateY(${subtitleY}px)`,
@@ -329,8 +344,7 @@ const EndScreen: React.FC = () => {
                 <div style={{
                     padding: '20px 50px',
                     borderRadius: 12,
-                    background: `linear-gradient(${gradientAngle}deg, #6366f1, #a855f7, #ec4899)`,
-                    backgroundSize: '200% 200%',
+                    background: `linear-gradient(90deg, ${COLORS.TIME_MANAGEMENT}, ${COLORS.PRIMARY_PURPLE}, ${COLORS.CONTENT_MEDIA})`,
                     fontSize: 28,
                     fontFamily: 'system-ui, -apple-system, sans-serif',
                     fontWeight: 600,
@@ -362,7 +376,7 @@ export const OnboardingVideo: React.FC = () => {
                     title="Time Management"
                     subtitle="Keep your class on schedule"
                     icon="⏰"
-                    color="#6366f1"
+                    color={COLORS.TIME_MANAGEMENT}
                 />
             </Sequence>
 
@@ -371,7 +385,7 @@ export const OnboardingVideo: React.FC = () => {
                     src="clock_comparison.png"
                     title="Clock Widget"
                     description="Display time in analog or digital format"
-                    accentColor="#6366f1"
+                    accentColor={COLORS.TIME_MANAGEMENT}
                 />
             </Sequence>
 
@@ -380,7 +394,7 @@ export const OnboardingVideo: React.FC = () => {
                     src="timer_comparison.png"
                     title="Timer Widget"
                     description="Countdown timer for activities and transitions"
-                    accentColor="#6366f1"
+                    accentColor={COLORS.TIME_MANAGEMENT}
                 />
             </Sequence>
 
@@ -389,7 +403,7 @@ export const OnboardingVideo: React.FC = () => {
                     src="timetable_comparison.png"
                     title="Timetable Widget"
                     description="Display your class schedule at a glance"
-                    accentColor="#6366f1"
+                    accentColor={COLORS.TIME_MANAGEMENT}
                 />
             </Sequence>
 
@@ -399,7 +413,7 @@ export const OnboardingVideo: React.FC = () => {
                     title="Classroom Management"
                     subtitle="Maintain focus and productivity"
                     icon="📊"
-                    color="#10b981"
+                    color={COLORS.CLASSROOM_MANAGEMENT}
                 />
             </Sequence>
 
@@ -408,7 +422,7 @@ export const OnboardingVideo: React.FC = () => {
                     src="traffic_comparison.png"
                     title="Traffic Light Widget"
                     description="Visual indicator for noise levels and behavior"
-                    accentColor="#10b981"
+                    accentColor={COLORS.CLASSROOM_MANAGEMENT}
                 />
             </Sequence>
 
@@ -417,7 +431,7 @@ export const OnboardingVideo: React.FC = () => {
                     src="sound_comparison.png"
                     title="Sound Level Monitor"
                     description="Real-time classroom noise detection"
-                    accentColor="#10b981"
+                    accentColor={COLORS.CLASSROOM_MANAGEMENT}
                 />
             </Sequence>
 
@@ -426,7 +440,7 @@ export const OnboardingVideo: React.FC = () => {
                     src="checklist_comparison.png"
                     title="Checklist Widget"
                     description="Track tasks and daily routines"
-                    accentColor="#10b981"
+                    accentColor={COLORS.CLASSROOM_MANAGEMENT}
                 />
             </Sequence>
 
@@ -436,7 +450,7 @@ export const OnboardingVideo: React.FC = () => {
                     title="Interactive Tools"
                     subtitle="Engage students with fun activities"
                     icon="🎲"
-                    color="#f59e0b"
+                    color={COLORS.INTERACTIVE_TOOLS}
                 />
             </Sequence>
 
@@ -445,7 +459,7 @@ export const OnboardingVideo: React.FC = () => {
                     src="random_comparison.png"
                     title="Random Name Picker"
                     description="Fairly select students for activities"
-                    accentColor="#f59e0b"
+                    accentColor={COLORS.INTERACTIVE_TOOLS}
                 />
             </Sequence>
 
@@ -454,7 +468,7 @@ export const OnboardingVideo: React.FC = () => {
                     src="dice_comparison.png"
                     title="Dice Widget"
                     description="Roll dice for games and activities"
-                    accentColor="#f59e0b"
+                    accentColor={COLORS.INTERACTIVE_TOOLS}
                 />
             </Sequence>
 
@@ -463,7 +477,7 @@ export const OnboardingVideo: React.FC = () => {
                     src="poll_comparison.png"
                     title="Poll Widget"
                     description="Quick student voting and surveys"
-                    accentColor="#f59e0b"
+                    accentColor={COLORS.INTERACTIVE_TOOLS}
                 />
             </Sequence>
 
@@ -473,7 +487,7 @@ export const OnboardingVideo: React.FC = () => {
                     title="Content & Media"
                     subtitle="Share and display information"
                     icon="🎨"
-                    color="#ec4899"
+                    color={COLORS.CONTENT_MEDIA}
                 />
             </Sequence>
 
@@ -482,7 +496,7 @@ export const OnboardingVideo: React.FC = () => {
                     src="text_comparison.png"
                     title="Text Widget"
                     description="Display instructions and announcements"
-                    accentColor="#ec4899"
+                    accentColor={COLORS.CONTENT_MEDIA}
                 />
             </Sequence>
 
@@ -491,7 +505,7 @@ export const OnboardingVideo: React.FC = () => {
                     src="drawing_comparison.png"
                     title="Drawing Widget"
                     description="Whiteboard for sketches and diagrams"
-                    accentColor="#ec4899"
+                    accentColor={COLORS.CONTENT_MEDIA}
                 />
             </Sequence>
 
@@ -500,7 +514,7 @@ export const OnboardingVideo: React.FC = () => {
                     src="embed_comparison.png"
                     title="Embed Widget"
                     description="Embed websites and external content"
-                    accentColor="#ec4899"
+                    accentColor={COLORS.CONTENT_MEDIA}
                 />
             </Sequence>
 
@@ -509,7 +523,7 @@ export const OnboardingVideo: React.FC = () => {
                     src="qr_comparison.png"
                     title="QR Code Widget"
                     description="Share links instantly with students"
-                    accentColor="#ec4899"
+                    accentColor={COLORS.CONTENT_MEDIA}
                 />
             </Sequence>
 
@@ -518,7 +532,7 @@ export const OnboardingVideo: React.FC = () => {
                     src="webcam_comparison.png"
                     title="Webcam Widget"
                     description="Display camera feed for demos"
-                    accentColor="#ec4899"
+                    accentColor={COLORS.CONTENT_MEDIA}
                 />
             </Sequence>
 
