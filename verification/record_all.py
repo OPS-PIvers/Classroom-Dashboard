@@ -1,5 +1,20 @@
+"""
+Comprehensive Demo Recording Script for Classroom Dashboard.
+
+This script automates the recording of "cinematic" demo videos for all widgets
+and system features using Playwright. It generates separate .webm video files
+for each scenario, intended for use in a product release video.
+
+Features:
+- "Cinematic Mode": Injects a custom cursor and smooth camera pan/zoom.
+- Mocks: Simulates Google Apps Script backend and hardware (microphone/camera).
+- Scenarios: Covers 17 distinct features/widgets.
+- Usage: python verification/record_all.py [scenarios...]
+"""
+
 import os
-import time
+import sys
+import argparse
 from playwright.sync_api import sync_playwright
 
 # Constants
@@ -81,7 +96,9 @@ def mock_google_script(page):
                 }
             }
         };
-        window.spawnWidget = window.spawnWidget || function() { console.log("Real spawnWidget not ready yet"); };
+        window.spawnWidget = window.spawnWidget || function() {
+            throw new Error("spawnWidget called before it is ready");
+        };
     """)
 
 def inject_cinematic_styles(page):
@@ -126,21 +143,12 @@ def inject_cinematic_styles(page):
             const container = document.getElementById('app-container');
             const w = window.innerWidth;
             const h = window.innerHeight;
-
-            // Calculate translation to center (x,y) on screen
-            // T = (ScreenCenter - Point) * Scale
-            // But wait, we want to zoom INTO (x,y).
-            // transform-origin is default center.
-            // Let's set transform-origin to 0 0 to be simple.
             container.style.transformOrigin = '0 0';
             container.style.transition = 'transform 1.2s cubic-bezier(0.25, 1, 0.5, 1)';
 
             if (scale === 1) {
                 container.style.transform = 'translate(0, 0) scale(1)';
             } else {
-                // We want (x,y) of the content to be at center of screen (w/2, h/2)
-                // tx = w/2 - x*scale
-                // ty = h/2 - y*scale
                 const tx = (w/2) - (x * scale);
                 const ty = (h/2) - (y * scale);
                 container.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
@@ -149,6 +157,7 @@ def inject_cinematic_styles(page):
     """)
 
 class Director:
+    """Helper class for cinematic interactions."""
     def __init__(self, page):
         self.page = page
 
@@ -163,39 +172,41 @@ class Director:
         return 0, 0
 
     def click(self, locator):
+        """Cinematic click: move, wait, click, wait."""
         self.move_to(locator)
         self.page.wait_for_timeout(100)
         locator.click()
         self.page.wait_for_timeout(300)
 
     def type(self, locator, text):
+        """Cinematic type: click then slow type."""
         self.click(locator)
-        locator.type(text, delay=100) # Slow typing
+        locator.type(text, delay=100)
         self.page.wait_for_timeout(500)
 
     def zoom_to_widget(self, locator):
-        # Wait for widget animation/rendering
+        """Zooms the camera to frame the widget."""
         self.page.wait_for_timeout(500)
         box = locator.bounding_box()
         if box:
             cx = box['x'] + box['width'] / 2
             cy = box['y'] + box['height'] / 2
 
-            # Calculate needed scale
-            # Target height is 60% of screen height
             target_h = 720 * 0.6
             scale = target_h / box['height']
-            if scale < 1.2: scale = 1.2 # Minimum zoom
-            if scale > 2.5: scale = 2.5 # Max zoom
+            if scale < 1.2: scale = 1.2
+            if scale > 2.5: scale = 2.5
 
             self.page.evaluate(f"window.setCamera({cx}, {cy}, {scale})")
-            self.page.wait_for_timeout(1200) # Wait for zoom
+            self.page.wait_for_timeout(1200)
 
     def reset_camera(self):
+        """Resets camera to default view."""
         self.page.evaluate("window.setCamera(0, 0, 1)")
         self.page.wait_for_timeout(1200)
 
 def record_scenario(playwright, name, action_callback):
+    """Records a single scenario to a video file."""
     print(f"--- Recording Scenario: {name} ---")
     browser = playwright.chromium.launch(headless=True)
     context = browser.new_context(
@@ -214,21 +225,28 @@ def record_scenario(playwright, name, action_callback):
         action_callback(director)
     except Exception as e:
         print(f"Error in scenario {name}: {e}")
+        import traceback
+        traceback.print_exc()
+
+    # Retrieve path before closing context
+    video_path = page.video.path()
 
     context.close()
     browser.close()
 
-    video_path = page.video.path()
     if video_path and os.path.exists(video_path):
         new_path = os.path.join(OUTPUT_DIR, f"{name}.webm")
         if os.path.exists(new_path):
             os.remove(new_path)
         os.rename(video_path, new_path)
         print(f"Saved video: {new_path}")
+    else:
+        print(f"Warning: Video file not found for {name}")
 
 # --- Scenarios ---
 
 def scenario_clock(d):
+    """Demonstrates Clock widget: spawn, settings, 24h toggle."""
     d.page.evaluate("spawnWidget('clock')")
     w = d.page.locator(".widget", has_text="Clock")
     w.wait_for()
@@ -240,6 +258,7 @@ def scenario_clock(d):
     d.reset_camera()
 
 def scenario_timer(d):
+    """Demonstrates Timer widget: start, pause, reset, settings."""
     d.page.evaluate("spawnWidget('timer')")
     w = d.page.locator(".widget", has_text="Timer")
     w.wait_for()
@@ -251,11 +270,12 @@ def scenario_timer(d):
     d.click(w.locator(".btn-reset"))
 
     d.click(w.locator(".btn-settings"))
-    d.page.locator(".inp-min").fill("1") # Direct fill for inputs without click sometimes better
+    d.page.locator(".inp-min").fill("1")
     d.click(w.locator(".btn-settings-done"))
     d.reset_camera()
 
 def scenario_traffic(d):
+    """Demonstrates Traffic Light widget interaction."""
     d.page.evaluate("spawnWidget('traffic')")
     w = d.page.locator(".widget", has_text="Signal")
     w.wait_for()
@@ -267,6 +287,7 @@ def scenario_traffic(d):
     d.reset_camera()
 
 def scenario_dice(d):
+    """Demonstrates Dice widget: roll and count change."""
     d.page.evaluate("spawnWidget('dice')")
     w = d.page.locator(".widget", has_text="Dice")
     w.wait_for()
@@ -284,6 +305,7 @@ def scenario_dice(d):
     d.reset_camera()
 
 def scenario_qr(d):
+    """Demonstrates QR Code widget: URL update."""
     d.page.evaluate("spawnWidget('qr')")
     w = d.page.locator(".widget", has_text="QR Code")
     w.wait_for()
@@ -295,6 +317,7 @@ def scenario_qr(d):
     d.reset_camera()
 
 def scenario_text(d):
+    """Demonstrates Text widget: typing and styling."""
     d.page.evaluate("spawnWidget('text')")
     w = d.page.locator(".widget", has_text="Note")
     w.wait_for()
@@ -308,18 +331,20 @@ def scenario_text(d):
     d.reset_camera()
 
 def scenario_checklist(d):
+    """Demonstrates Checklist widget: adding items and checking."""
     d.page.evaluate("spawnWidget('checklist')")
     w = d.page.locator(".widget", has_text="Checklist")
     w.wait_for()
     d.zoom_to_widget(w)
 
     d.click(w.locator(".btn-settings"))
-    d.type(w.locator(".inp-list"), "Turn in Homework") # Simplified for smooth typing
+    d.type(w.locator(".inp-list"), "Turn in Homework")
     d.click(w.locator(".btn-update"))
     d.click(w.locator(".check-item input").first)
     d.reset_camera()
 
 def scenario_timetable(d):
+    """Demonstrates Timetable widget: data entry."""
     d.page.evaluate("spawnWidget('timetable')")
     w = d.page.locator(".widget", has_text="Timetable")
     w.wait_for()
@@ -331,6 +356,7 @@ def scenario_timetable(d):
     d.reset_camera()
 
 def scenario_embed(d):
+    """Demonstrates Embed widget: loading URL."""
     d.page.evaluate("spawnWidget('embed')")
     w = d.page.locator(".widget", has_text="Embed")
     w.wait_for()
@@ -342,13 +368,13 @@ def scenario_embed(d):
     d.reset_camera()
 
 def scenario_random(d):
+    """Demonstrates Name Picker: 2004 names and group mode."""
     d.page.evaluate("spawnWidget('random')")
     w = d.page.locator(".widget", has_text="Name Picker")
     w.wait_for()
     d.zoom_to_widget(w)
 
     d.click(w.locator(".btn-settings"))
-    # Use fill for long text to save time, typing animation too long here
     d.page.locator(".inp-list").fill("Emily\\nMichael\\nJacob\\nJoshua\\nMatthew")
     d.click(w.locator(".btn-settings-done"))
     d.click(w.locator(".btn-pick"))
@@ -356,24 +382,36 @@ def scenario_random(d):
     d.reset_camera()
 
 def scenario_sound(d):
+    """Demonstrates Sound widget: mocks mic visual."""
     d.page.evaluate("spawnWidget('sound')")
     w = d.page.locator(".widget", has_text="Noise Level")
     w.wait_for()
     d.zoom_to_widget(w)
 
+    # Mock getUserMedia BEFORE clicking
+    d.page.evaluate("navigator.mediaDevices.getUserMedia = () => Promise.resolve(new MediaStream())")
+
+    d.click(w.locator(".btn-mic-start"))
+
+    # Inject interval for visual
     d.page.evaluate("""
         const bar = document.querySelector('.mic-bar');
         if(bar) {
-            let h = 10;
-            setInterval(() => { h = Math.random() * 80 + 10; bar.style.height = h + '%'; }, 100);
+            window.__micBarInterval = setInterval(() => {
+                let h = Math.random() * 80 + 10;
+                bar.style.height = h + '%';
+            }, 100);
         }
     """)
-    d.page.evaluate("navigator.mediaDevices.getUserMedia = () => Promise.resolve(new MediaStream())")
-    d.click(w.locator(".btn-mic-start"))
+
     d.page.wait_for_timeout(3000)
+
+    # Clear interval
+    d.page.evaluate("window.__micBarInterval && clearInterval(window.__micBarInterval)")
     d.reset_camera()
 
 def scenario_drawing(d):
+    """Demonstrates Drawing widget: custom mouse moves."""
     d.page.evaluate("spawnWidget('drawing')")
     w = d.page.locator(".widget", has_text="Sketch")
     w.wait_for()
@@ -382,13 +420,12 @@ def scenario_drawing(d):
     canvas = w.locator("canvas")
     box = canvas.bounding_box()
 
-    # Custom draw implementation via mouse moves
     d.page.mouse.move(box["x"] + 100, box["y"] + 100)
     d.page.mouse.down()
     d.page.mouse.move(box["x"] + 200, box["y"] + 100, steps=20)
     d.page.mouse.up()
 
-    d.move_to(w) # Hover to show tools
+    d.move_to(w)
     d.click(w.locator(".btn-color[data-color='#ef4444']"))
 
     d.page.mouse.move(box["x"] + 50, box["y"] + 50)
@@ -398,6 +435,7 @@ def scenario_drawing(d):
     d.reset_camera()
 
 def scenario_poll(d):
+    """Demonstrates Poll widget: voting."""
     d.page.evaluate("spawnWidget('poll')")
     w = d.page.locator(".widget", has_text="Quick Poll")
     w.wait_for()
@@ -414,6 +452,7 @@ def scenario_poll(d):
     d.reset_camera()
 
 def scenario_backgrounds(d):
+    """Demonstrates switching backgrounds."""
     d.click(d.page.locator("#btn-bg-menu"))
     d.click(d.page.locator(".bg-opt").nth(1))
     d.click(d.page.locator("#btn-bg-menu"))
@@ -422,8 +461,9 @@ def scenario_backgrounds(d):
     d.click(d.page.locator(".bg-opt").last)
 
 def scenario_save_load(d):
+    """Demonstrates Save/Load with Dialog handling."""
     d.page.evaluate("spawnWidget('clock')")
-    d.page.on("dialog", lambda dialog: dialog.accept("Demo Dashboard"))
+    d.page.once("dialog", lambda dialog: dialog.accept("Demo Dashboard"))
     d.click(d.page.locator("#btn-save"))
     d.page.wait_for_timeout(1000)
     d.click(d.page.locator("#btn-my-dashboards"))
@@ -433,12 +473,14 @@ def scenario_save_load(d):
     d.click(d.page.locator("#btn-my-dashboards"))
 
 def scenario_teacher_session(d):
+    """Demonstrates Live Session controls."""
     d.click(d.page.locator("#btn-start-session"))
     d.click(d.page.locator("#btn-menu-start-session"))
     d.page.wait_for_timeout(1000)
     d.click(d.page.locator("#btn-copy-link"))
 
     d.page.wait_for_timeout(1000)
+    # Force open menu if toggle fails (robustness for demo recording)
     d.page.evaluate("document.getElementById('session-menu').classList.remove('hidden')")
     d.click(d.page.locator("#btn-menu-pause"))
 
@@ -449,6 +491,7 @@ def scenario_teacher_session(d):
     d.click(d.page.locator("#btn-end-session"))
 
 def scenario_student_join(d):
+    """Demonstrates Student View via simulated Join."""
     d.page.locator("#student-join-screen").evaluate("el => el.classList.remove('hidden')")
     d.page.locator("#toolbar-container").evaluate("el => el.classList.add('hidden')")
     d.type(d.page.locator("#join-code-input"), "DEMO12")
@@ -457,25 +500,44 @@ def scenario_student_join(d):
     d.click(d.page.locator("#btn-leave-session"))
 
 def main():
+    if not os.path.exists('index.html'):
+        print("Error: index.html not found. Run from project root.")
+        sys.exit(1)
+
     os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+    scenarios = {
+        "clock": scenario_clock,
+        "timer": scenario_timer,
+        "traffic": scenario_traffic,
+        "dice": scenario_dice,
+        "qr": scenario_qr,
+        "text": scenario_text,
+        "checklist": scenario_checklist,
+        "timetable": scenario_timetable,
+        "embed": scenario_embed,
+        "random": scenario_random,
+        "sound": scenario_sound,
+        "drawing": scenario_drawing,
+        "poll": scenario_poll,
+        "backgrounds": scenario_backgrounds,
+        "save_load": scenario_save_load,
+        "teacher_session": scenario_teacher_session,
+        "student_join": scenario_student_join
+    }
+
+    parser = argparse.ArgumentParser(description="Record demo videos for Classroom Dashboard.")
+    parser.add_argument("names", nargs="*", help="Names of scenarios to run (default: all)")
+    args = parser.parse_args()
+
+    to_run = args.names if args.names else scenarios.keys()
+
     with sync_playwright() as p:
-        record_scenario(p, "clock", scenario_clock)
-        record_scenario(p, "timer", scenario_timer)
-        record_scenario(p, "traffic", scenario_traffic)
-        record_scenario(p, "dice", scenario_dice)
-        record_scenario(p, "qr", scenario_qr)
-        record_scenario(p, "text", scenario_text)
-        record_scenario(p, "checklist", scenario_checklist)
-        record_scenario(p, "timetable", scenario_timetable)
-        record_scenario(p, "embed", scenario_embed)
-        record_scenario(p, "random", scenario_random)
-        record_scenario(p, "sound", scenario_sound)
-        record_scenario(p, "drawing", scenario_drawing)
-        record_scenario(p, "poll", scenario_poll)
-        record_scenario(p, "backgrounds", scenario_backgrounds)
-        record_scenario(p, "save_load", scenario_save_load)
-        record_scenario(p, "teacher_session", scenario_teacher_session)
-        record_scenario(p, "student_join", scenario_student_join)
+        for name in to_run:
+            if name in scenarios:
+                record_scenario(p, name, scenarios[name])
+            else:
+                print(f"Warning: Scenario '{name}' not found.")
 
 if __name__ == "__main__":
     main()
