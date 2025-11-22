@@ -171,47 +171,129 @@ const EndScreen: React.FC = () => {
 export const OnboardingVideo: React.FC = () => {
   return (
     <AbsoluteFill style={{ backgroundColor: 'white' }}>
-      <Sequence from={0} durationInFrames={150}>
+      {/* Intro */}
+      <Sequence from={0} durationInFrames={120}>
         <Title title="Classroom Dashboard" subtitle="The Ultimate Teacher's Companion" />
       </Sequence>
 
-      {/* Screenshot: Add dashboard.png to public/ folder */}
-      <Sequence from={150} durationInFrames={150}>
+      {/* Time Management Widgets */}
+      <Sequence from={120} durationInFrames={90}>
         <Screenshot
-          src="dashboard.png"
-          title="Your Complete Dashboard"
-          description="All your classroom tools in one customizable view"
+          src="clock_comparison.png"
+          title="Clock Widget"
+          description="Display time in analog or digital format"
         />
       </Sequence>
 
-      {/* Screenshot: Add widgets.png to public/ folder */}
-      <Sequence from={300} durationInFrames={150}>
+      <Sequence from={210} durationInFrames={90}>
         <Screenshot
-          src="widgets.png"
-          title="Essential Widgets"
-          description="Clock, Timer, Traffic Light, and more"
+          src="timer_comparison.png"
+          title="Timer Widget"
+          description="Countdown timer for activities and transitions"
         />
       </Sequence>
 
-      {/* Screenshot: Add interactive.png to public/ folder */}
-      <Sequence from={450} durationInFrames={150}>
+      <Sequence from={300} durationInFrames={90}>
         <Screenshot
-          src="interactive.png"
-          title="Interactive Tools"
-          description="Random Name Picker, Dice, Polls, and Sound Level Monitor"
+          src="timetable_comparison.png"
+          title="Timetable Widget"
+          description="Display your class schedule at a glance"
         />
       </Sequence>
 
-      {/* Screenshot: Add customization.png to public/ folder */}
-      <Sequence from={600} durationInFrames={150}>
+      {/* Classroom Management */}
+      <Sequence from={390} durationInFrames={90}>
         <Screenshot
-          src="customization.png"
-          title="Fully Customizable"
-          description="Change backgrounds, resize widgets, and save your layouts"
+          src="traffic_comparison.png"
+          title="Traffic Light Widget"
+          description="Visual indicator for noise levels and behavior"
         />
       </Sequence>
 
-      <Sequence from={750} durationInFrames={150}>
+      <Sequence from={480} durationInFrames={90}>
+        <Screenshot
+          src="sound_comparison.png"
+          title="Sound Level Monitor"
+          description="Real-time classroom noise detection"
+        />
+      </Sequence>
+
+      <Sequence from={570} durationInFrames={90}>
+        <Screenshot
+          src="checklist_comparison.png"
+          title="Checklist Widget"
+          description="Track tasks and daily routines"
+        />
+      </Sequence>
+
+      {/* Interactive Tools */}
+      <Sequence from={660} durationInFrames={90}>
+        <Screenshot
+          src="random_comparison.png"
+          title="Random Name Picker"
+          description="Fairly select students for activities"
+        />
+      </Sequence>
+
+      <Sequence from={750} durationInFrames={90}>
+        <Screenshot
+          src="dice_comparison.png"
+          title="Dice Widget"
+          description="Roll dice for games and activities"
+        />
+      </Sequence>
+
+      <Sequence from={840} durationInFrames={90}>
+        <Screenshot
+          src="poll_comparison.png"
+          title="Poll Widget"
+          description="Quick student voting and surveys"
+        />
+      </Sequence>
+
+      {/* Content & Media */}
+      <Sequence from={930} durationInFrames={90}>
+        <Screenshot
+          src="text_comparison.png"
+          title="Text Widget"
+          description="Display instructions and announcements"
+        />
+      </Sequence>
+
+      <Sequence from={1020} durationInFrames={90}>
+        <Screenshot
+          src="drawing_comparison.png"
+          title="Drawing Widget"
+          description="Whiteboard for sketches and diagrams"
+        />
+      </Sequence>
+
+      <Sequence from={1110} durationInFrames={90}>
+        <Screenshot
+          src="embed_comparison.png"
+          title="Embed Widget"
+          description="Embed websites and external content"
+        />
+      </Sequence>
+
+      <Sequence from={1200} durationInFrames={90}>
+        <Screenshot
+          src="qr_comparison.png"
+          title="QR Code Widget"
+          description="Share links instantly with students"
+        />
+      </Sequence>
+
+      <Sequence from={1290} durationInFrames={90}>
+        <Screenshot
+          src="webcam_comparison.png"
+          title="Webcam Widget"
+          description="Display camera feed for demos"
+        />
+      </Sequence>
+
+      {/* End Screen */}
+      <Sequence from={1380} durationInFrames={120}>
         <EndScreen />
       </Sequence>
     </AbsoluteFill>
