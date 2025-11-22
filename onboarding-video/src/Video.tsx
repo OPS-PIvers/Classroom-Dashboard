@@ -1,4 +1,4 @@
-import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig, Sequence, spring, Img, staticFile } from 'remotion';
+import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig, Sequence, spring, Video, staticFile, OffthreadVideo } from 'remotion';
 import React from 'react';
 
 // Color constants
@@ -14,6 +14,82 @@ const COLORS = {
     TEXT_SECONDARY: '#64748b',
     TEXT_MUTED: '#94a3b8',
 } as const;
+
+// Stylized cursor component
+const StylizedCursor: React.FC<{
+    x: number;
+    y: number;
+    clicking?: boolean;
+    visible?: boolean;
+}> = ({ x, y, clicking = false, visible = true }) => {
+    const frame = useCurrentFrame();
+    const { fps } = useVideoConfig();
+
+    const clickScale = clicking
+        ? spring({ frame, fps, from: 1, to: 0.8, config: { damping: 20, stiffness: 300 } })
+        : 1;
+
+    if (!visible) return null;
+
+    return (
+        <div style={{
+            position: 'absolute',
+            left: x,
+            top: y,
+            transform: `scale(${clickScale})`,
+            pointerEvents: 'none',
+            zIndex: 1000,
+            filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))',
+        }}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                <path
+                    d="M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 0 1 .35-.15h6.87c.48 0 .72-.58.38-.92L6.35 2.84a.5.5 0 0 0-.85.37Z"
+                    fill="white"
+                    stroke="#1e293b"
+                    strokeWidth="1.5"
+                />
+            </svg>
+            {clicking && (
+                <div style={{
+                    position: 'absolute',
+                    top: -10,
+                    left: -10,
+                    width: 44,
+                    height: 44,
+                    borderRadius: '50%',
+                    border: '2px solid rgba(99, 102, 241, 0.5)',
+                    animation: 'ripple 0.3s ease-out',
+                }} />
+            )}
+        </div>
+    );
+};
+
+// Typing text animation component
+const TypingText: React.FC<{
+    text: string;
+    startFrame?: number;
+    charsPerFrame?: number;
+    style?: React.CSSProperties;
+}> = ({ text, startFrame = 0, charsPerFrame = 0.5, style }) => {
+    const frame = useCurrentFrame();
+    const elapsed = Math.max(0, frame - startFrame);
+    const chars = Math.min(Math.floor(elapsed * charsPerFrame), text.length);
+    const displayText = text.slice(0, chars);
+    const showCursor = elapsed > 0 && chars < text.length;
+
+    return (
+        <span style={style}>
+            {displayText}
+            {showCursor && (
+                <span style={{
+                    opacity: Math.sin(frame * 0.3) > 0 ? 1 : 0,
+                    color: COLORS.PRIMARY_PURPLE,
+                }}>|</span>
+            )}
+        </span>
+    );
+};
 
 // Reusable animated particle component
 const AnimatedParticle: React.FC<{
@@ -58,27 +134,85 @@ const ProgressBar: React.FC<{ progress: number }> = ({ progress }) => {
     );
 };
 
-// Enhanced Screenshot component
-const Screenshot: React.FC<{
+// Video demo component with pan/zoom effects
+const VideoDemo: React.FC<{
     src: string;
     title: string;
     description: string;
     accentColor?: string;
-}> = ({ src, title, description, accentColor = COLORS.TIME_MANAGEMENT }) => {
+    panZoom?: {
+        startScale?: number;
+        endScale?: number;
+        startX?: number;
+        endX?: number;
+        startY?: number;
+        endY?: number;
+    };
+    cursorPath?: Array<{ frame: number; x: number; y: number; click?: boolean }>;
+}> = ({
+    src,
+    title,
+    description,
+    accentColor = COLORS.TIME_MANAGEMENT,
+    panZoom = {},
+    cursorPath = []
+}) => {
     const frame = useCurrentFrame();
     const { fps, durationInFrames } = useVideoConfig();
 
+    const {
+        startScale = 1,
+        endScale = 1.05,
+        startX = 50,
+        endX = 50,
+        startY = 50,
+        endY = 50,
+    } = panZoom;
+
+    // Pan/zoom interpolation
+    const scale = interpolate(frame, [0, durationInFrames], [startScale, endScale], { extrapolateRight: 'clamp' });
+    const translateX = interpolate(frame, [0, durationInFrames], [startX - 50, endX - 50], { extrapolateRight: 'clamp' });
+    const translateY = interpolate(frame, [0, durationInFrames], [startY - 50, endY - 50], { extrapolateRight: 'clamp' });
+
+    // Title animations
     const titleSlide = spring({ frame, fps, from: -30, to: 0, config: { damping: 15 } });
     const titleOpacity = interpolate(frame, [0, 15], [0, 1], { extrapolateRight: 'clamp' });
 
     const descOpacity = interpolate(frame, [10, 25], [0, 1], { extrapolateRight: 'clamp' });
     const descSlide = spring({ frame: frame - 5, fps, from: 20, to: 0, config: { damping: 15 } });
 
-    const imageScale = spring({ frame: frame - 8, fps, from: 0.95, to: 1, config: { damping: 12, stiffness: 100 } });
-    const imageOpacity = interpolate(frame, [5, 20], [0, 1], { extrapolateRight: 'clamp' });
+    const videoScale = spring({ frame: frame - 8, fps, from: 0.95, to: 1, config: { damping: 12, stiffness: 100 } });
+    const videoOpacity = interpolate(frame, [5, 20], [0, 1], { extrapolateRight: 'clamp' });
 
     // Fade out at end
     const fadeOut = interpolate(frame, [durationInFrames - 15, durationInFrames], [1, 0], { extrapolateLeft: 'clamp' });
+
+    // Find current cursor position
+    let cursorX = 0;
+    let cursorY = 0;
+    let cursorClicking = false;
+    let cursorVisible = false;
+
+    if (cursorPath.length > 0) {
+        for (let i = cursorPath.length - 1; i >= 0; i--) {
+            if (frame >= cursorPath[i].frame) {
+                const current = cursorPath[i];
+                const next = cursorPath[i + 1];
+
+                if (next) {
+                    const progress = (frame - current.frame) / (next.frame - current.frame);
+                    cursorX = interpolate(progress, [0, 1], [current.x, next.x], { extrapolateRight: 'clamp' });
+                    cursorY = interpolate(progress, [0, 1], [current.y, next.y], { extrapolateRight: 'clamp' });
+                } else {
+                    cursorX = current.x;
+                    cursorY = current.y;
+                }
+                cursorClicking = current.click || false;
+                cursorVisible = true;
+                break;
+            }
+        }
+    }
 
     return (
         <AbsoluteFill style={{
@@ -104,26 +238,28 @@ const Screenshot: React.FC<{
                 transform: `translateY(${titleSlide}px)`,
                 opacity: titleOpacity,
                 textAlign: 'center',
-                marginBottom: 30
+                marginBottom: 20
             }}>
                 <h2 style={{
-                    fontSize: 56,
+                    fontSize: 52,
                     fontFamily: 'system-ui, -apple-system, sans-serif',
                     fontWeight: 700,
                     color: COLORS.TEXT_PRIMARY,
                     margin: 0,
                     letterSpacing: '-0.02em'
-                }}>{title}</h2>
+                }}>
+                    <TypingText text={title} startFrame={5} charsPerFrame={1.5} />
+                </h2>
             </div>
 
             <div style={{
                 transform: `translateY(${descSlide}px)`,
                 opacity: descOpacity,
                 textAlign: 'center',
-                marginBottom: 40
+                marginBottom: 30
             }}>
                 <p style={{
-                    fontSize: 26,
+                    fontSize: 24,
                     fontFamily: 'system-ui, -apple-system, sans-serif',
                     color: COLORS.TEXT_SECONDARY,
                     margin: 0,
@@ -132,21 +268,34 @@ const Screenshot: React.FC<{
             </div>
 
             <div style={{
-                transform: `scale(${imageScale})`,
-                opacity: imageOpacity,
-                boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.05)',
+                transform: `scale(${videoScale})`,
+                opacity: videoOpacity,
+                boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.05)',
                 borderRadius: 16,
                 overflow: 'hidden',
-                background: 'white'
+                background: 'white',
+                position: 'relative',
             }}>
-                <Img
-                    src={staticFile(src)}
-                    alt={`${title} - ${description}`}
-                    style={{
-                        maxWidth: 1400,
-                        maxHeight: 650,
-                        objectFit: 'contain'
-                    }}
+                <div style={{
+                    transform: `scale(${scale}) translate(${translateX}%, ${translateY}%)`,
+                    transformOrigin: 'center center',
+                }}>
+                    <OffthreadVideo
+                        src={staticFile(src)}
+                        style={{
+                            width: 1200,
+                            height: 675,
+                            objectFit: 'cover',
+                        }}
+                    />
+                </div>
+
+                {/* Stylized cursor overlay */}
+                <StylizedCursor
+                    x={cursorX}
+                    y={cursorY}
+                    clicking={cursorClicking}
+                    visible={cursorVisible}
                 />
             </div>
         </AbsoluteFill>
@@ -358,20 +507,29 @@ const EndScreen: React.FC = () => {
     );
 };
 
+// Video duration per demo (in frames at 30fps)
+const DEMO_DURATION = 180; // 6 seconds per demo
+const HEADER_DURATION = 60; // 2 seconds per category header
+const INTRO_DURATION = 120; // 4 seconds intro
+const OUTRO_DURATION = 150; // 5 seconds outro
+
 export const OnboardingVideo: React.FC = () => {
     const frame = useCurrentFrame();
     const { durationInFrames } = useVideoConfig();
     const progress = frame / durationInFrames;
 
+    let currentFrame = 0;
+
     return (
         <AbsoluteFill style={{ backgroundColor: 'white' }}>
             {/* Intro */}
-            <Sequence from={0} durationInFrames={120}>
+            <Sequence from={currentFrame} durationInFrames={INTRO_DURATION}>
                 <Title title="Classroom Dashboard" subtitle="THE ULTIMATE TEACHER'S COMPANION" />
             </Sequence>
+            {currentFrame += INTRO_DURATION}
 
             {/* Time Management Category */}
-            <Sequence from={120} durationInFrames={60}>
+            <Sequence from={currentFrame} durationInFrames={HEADER_DURATION}>
                 <CategoryHeader
                     title="Time Management"
                     subtitle="Keep your class on schedule"
@@ -379,36 +537,43 @@ export const OnboardingVideo: React.FC = () => {
                     color={COLORS.TIME_MANAGEMENT}
                 />
             </Sequence>
+            {currentFrame += HEADER_DURATION}
 
-            <Sequence from={180} durationInFrames={90}>
-                <Screenshot
-                    src="clock_comparison.png"
+            <Sequence from={currentFrame} durationInFrames={DEMO_DURATION}>
+                <VideoDemo
+                    src="clock.webm"
                     title="Clock Widget"
                     description="Display time in analog or digital format"
                     accentColor={COLORS.TIME_MANAGEMENT}
+                    panZoom={{ startScale: 1, endScale: 1.08, startY: 45, endY: 55 }}
                 />
             </Sequence>
+            {currentFrame += DEMO_DURATION}
 
-            <Sequence from={270} durationInFrames={90}>
-                <Screenshot
-                    src="timer_comparison.png"
+            <Sequence from={currentFrame} durationInFrames={DEMO_DURATION}>
+                <VideoDemo
+                    src="timer.webm"
                     title="Timer Widget"
                     description="Countdown timer for activities and transitions"
                     accentColor={COLORS.TIME_MANAGEMENT}
+                    panZoom={{ startScale: 1.05, endScale: 1, startX: 45, endX: 55 }}
                 />
             </Sequence>
+            {currentFrame += DEMO_DURATION}
 
-            <Sequence from={360} durationInFrames={90}>
-                <Screenshot
-                    src="timetable_comparison.png"
+            <Sequence from={currentFrame} durationInFrames={DEMO_DURATION}>
+                <VideoDemo
+                    src="timetable.webm"
                     title="Timetable Widget"
                     description="Display your class schedule at a glance"
                     accentColor={COLORS.TIME_MANAGEMENT}
+                    panZoom={{ startScale: 1, endScale: 1.06 }}
                 />
             </Sequence>
+            {currentFrame += DEMO_DURATION}
 
             {/* Classroom Management Category */}
-            <Sequence from={450} durationInFrames={60}>
+            <Sequence from={currentFrame} durationInFrames={HEADER_DURATION}>
                 <CategoryHeader
                     title="Classroom Management"
                     subtitle="Maintain focus and productivity"
@@ -416,36 +581,43 @@ export const OnboardingVideo: React.FC = () => {
                     color={COLORS.CLASSROOM_MANAGEMENT}
                 />
             </Sequence>
+            {currentFrame += HEADER_DURATION}
 
-            <Sequence from={510} durationInFrames={90}>
-                <Screenshot
-                    src="traffic_comparison.png"
+            <Sequence from={currentFrame} durationInFrames={DEMO_DURATION}>
+                <VideoDemo
+                    src="traffic.webm"
                     title="Traffic Light Widget"
                     description="Visual indicator for noise levels and behavior"
                     accentColor={COLORS.CLASSROOM_MANAGEMENT}
+                    panZoom={{ startScale: 1.02, endScale: 1.08, startY: 48, endY: 52 }}
                 />
             </Sequence>
+            {currentFrame += DEMO_DURATION}
 
-            <Sequence from={600} durationInFrames={90}>
-                <Screenshot
-                    src="sound_comparison.png"
+            <Sequence from={currentFrame} durationInFrames={DEMO_DURATION}>
+                <VideoDemo
+                    src="sound.webm"
                     title="Sound Level Monitor"
                     description="Real-time classroom noise detection"
                     accentColor={COLORS.CLASSROOM_MANAGEMENT}
+                    panZoom={{ startScale: 1, endScale: 1.05 }}
                 />
             </Sequence>
+            {currentFrame += DEMO_DURATION}
 
-            <Sequence from={690} durationInFrames={90}>
-                <Screenshot
-                    src="checklist_comparison.png"
+            <Sequence from={currentFrame} durationInFrames={DEMO_DURATION}>
+                <VideoDemo
+                    src="checklist.webm"
                     title="Checklist Widget"
                     description="Track tasks and daily routines"
                     accentColor={COLORS.CLASSROOM_MANAGEMENT}
+                    panZoom={{ startScale: 1.04, endScale: 1, startX: 52, endX: 48 }}
                 />
             </Sequence>
+            {currentFrame += DEMO_DURATION}
 
             {/* Interactive Tools Category */}
-            <Sequence from={780} durationInFrames={60}>
+            <Sequence from={currentFrame} durationInFrames={HEADER_DURATION}>
                 <CategoryHeader
                     title="Interactive Tools"
                     subtitle="Engage students with fun activities"
@@ -453,36 +625,43 @@ export const OnboardingVideo: React.FC = () => {
                     color={COLORS.INTERACTIVE_TOOLS}
                 />
             </Sequence>
+            {currentFrame += HEADER_DURATION}
 
-            <Sequence from={840} durationInFrames={90}>
-                <Screenshot
-                    src="random_comparison.png"
+            <Sequence from={currentFrame} durationInFrames={DEMO_DURATION}>
+                <VideoDemo
+                    src="random.webm"
                     title="Random Name Picker"
                     description="Fairly select students for activities"
                     accentColor={COLORS.INTERACTIVE_TOOLS}
+                    panZoom={{ startScale: 1, endScale: 1.07, startY: 47, endY: 53 }}
                 />
             </Sequence>
+            {currentFrame += DEMO_DURATION}
 
-            <Sequence from={930} durationInFrames={90}>
-                <Screenshot
-                    src="dice_comparison.png"
+            <Sequence from={currentFrame} durationInFrames={DEMO_DURATION}>
+                <VideoDemo
+                    src="dice.webm"
                     title="Dice Widget"
                     description="Roll dice for games and activities"
                     accentColor={COLORS.INTERACTIVE_TOOLS}
+                    panZoom={{ startScale: 1.03, endScale: 1.08 }}
                 />
             </Sequence>
+            {currentFrame += DEMO_DURATION}
 
-            <Sequence from={1020} durationInFrames={90}>
-                <Screenshot
-                    src="poll_comparison.png"
+            <Sequence from={currentFrame} durationInFrames={DEMO_DURATION}>
+                <VideoDemo
+                    src="poll.webm"
                     title="Poll Widget"
                     description="Quick student voting and surveys"
                     accentColor={COLORS.INTERACTIVE_TOOLS}
+                    panZoom={{ startScale: 1, endScale: 1.06, startX: 48, endX: 52 }}
                 />
             </Sequence>
+            {currentFrame += DEMO_DURATION}
 
             {/* Content & Media Category */}
-            <Sequence from={1110} durationInFrames={60}>
+            <Sequence from={currentFrame} durationInFrames={HEADER_DURATION}>
                 <CategoryHeader
                     title="Content & Media"
                     subtitle="Share and display information"
@@ -490,54 +669,98 @@ export const OnboardingVideo: React.FC = () => {
                     color={COLORS.CONTENT_MEDIA}
                 />
             </Sequence>
+            {currentFrame += HEADER_DURATION}
 
-            <Sequence from={1170} durationInFrames={90}>
-                <Screenshot
-                    src="text_comparison.png"
+            <Sequence from={currentFrame} durationInFrames={DEMO_DURATION}>
+                <VideoDemo
+                    src="text.webm"
                     title="Text Widget"
                     description="Display instructions and announcements"
                     accentColor={COLORS.CONTENT_MEDIA}
+                    panZoom={{ startScale: 1.02, endScale: 1.07, startY: 46, endY: 54 }}
                 />
             </Sequence>
+            {currentFrame += DEMO_DURATION}
 
-            <Sequence from={1260} durationInFrames={90}>
-                <Screenshot
-                    src="drawing_comparison.png"
+            <Sequence from={currentFrame} durationInFrames={DEMO_DURATION}>
+                <VideoDemo
+                    src="drawing.webm"
                     title="Drawing Widget"
                     description="Whiteboard for sketches and diagrams"
                     accentColor={COLORS.CONTENT_MEDIA}
+                    panZoom={{ startScale: 1, endScale: 1.05 }}
                 />
             </Sequence>
+            {currentFrame += DEMO_DURATION}
 
-            <Sequence from={1350} durationInFrames={90}>
-                <Screenshot
-                    src="embed_comparison.png"
+            <Sequence from={currentFrame} durationInFrames={DEMO_DURATION}>
+                <VideoDemo
+                    src="embed.webm"
                     title="Embed Widget"
                     description="Embed websites and external content"
                     accentColor={COLORS.CONTENT_MEDIA}
+                    panZoom={{ startScale: 1.04, endScale: 1, startX: 53, endX: 47 }}
                 />
             </Sequence>
+            {currentFrame += DEMO_DURATION}
 
-            <Sequence from={1440} durationInFrames={90}>
-                <Screenshot
-                    src="qr_comparison.png"
+            <Sequence from={currentFrame} durationInFrames={DEMO_DURATION}>
+                <VideoDemo
+                    src="qr.webm"
                     title="QR Code Widget"
                     description="Share links instantly with students"
                     accentColor={COLORS.CONTENT_MEDIA}
+                    panZoom={{ startScale: 1, endScale: 1.06 }}
                 />
             </Sequence>
+            {currentFrame += DEMO_DURATION}
 
-            <Sequence from={1530} durationInFrames={90}>
-                <Screenshot
-                    src="webcam_comparison.png"
-                    title="Webcam Widget"
-                    description="Display camera feed for demos"
-                    accentColor={COLORS.CONTENT_MEDIA}
+            {/* Additional Features */}
+            <Sequence from={currentFrame} durationInFrames={HEADER_DURATION}>
+                <CategoryHeader
+                    title="Additional Features"
+                    subtitle="Save, share, and collaborate"
+                    icon="✨"
+                    color={COLORS.PRIMARY_PURPLE}
                 />
             </Sequence>
+            {currentFrame += HEADER_DURATION}
+
+            <Sequence from={currentFrame} durationInFrames={DEMO_DURATION}>
+                <VideoDemo
+                    src="backgrounds.webm"
+                    title="Custom Backgrounds"
+                    description="Personalize your dashboard appearance"
+                    accentColor={COLORS.PRIMARY_PURPLE}
+                    panZoom={{ startScale: 1, endScale: 1.05 }}
+                />
+            </Sequence>
+            {currentFrame += DEMO_DURATION}
+
+            <Sequence from={currentFrame} durationInFrames={DEMO_DURATION}>
+                <VideoDemo
+                    src="save_load.webm"
+                    title="Save & Load"
+                    description="Save your layouts and restore them anytime"
+                    accentColor={COLORS.PRIMARY_PURPLE}
+                    panZoom={{ startScale: 1.02, endScale: 1.07 }}
+                />
+            </Sequence>
+            {currentFrame += DEMO_DURATION}
+
+            <Sequence from={currentFrame} durationInFrames={DEMO_DURATION}>
+                <VideoDemo
+                    src="teacher_session.webm"
+                    title="Live Sessions"
+                    description="Share your dashboard with students in real-time"
+                    accentColor={COLORS.PRIMARY_PURPLE}
+                    panZoom={{ startScale: 1, endScale: 1.06, startY: 48, endY: 52 }}
+                />
+            </Sequence>
+            {currentFrame += DEMO_DURATION}
 
             {/* End Screen */}
-            <Sequence from={1620} durationInFrames={150}>
+            <Sequence from={currentFrame} durationInFrames={OUTRO_DURATION}>
                 <EndScreen />
             </Sequence>
 
