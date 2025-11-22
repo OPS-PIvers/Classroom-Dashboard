@@ -20,80 +20,101 @@ from playwright.sync_api import sync_playwright
 # Constants
 OUTPUT_DIR = "videos/"
 URL_FILE = f"file://{os.path.abspath('index.html')}"
+ZOOM_MIN_SCALE = 1.2
+ZOOM_MAX_SCALE = 2.5
+ZOOM_TARGET_HEIGHT_RATIO = 0.6
 
 def mock_google_script(page):
-    """Injects the google.script.run mock into the page."""
+    """Injects the google.script.run mock into the page using a robust builder pattern."""
     page.evaluate("""
         window.google = {
             script: {
-                run: {
-                    withSuccessHandler: function(callback) {
-                        this.successCallback = callback;
-                        return this;
-                    },
-                    withFailureHandler: function(callback) {
-                        this.failureCallback = callback;
-                        return this;
-                    },
-                    createSession: function(data) {
-                        if (this.successCallback) {
-                            this.successCallback({
-                                success: true,
-                                code: 'DEMO12',
-                                data: JSON.parse(data)
-                            });
-                        }
-                    },
-                    joinSession: function(code) {
-                        if (this.successCallback) {
-                            this.successCallback({
-                                success: true,
-                                data: {
-                                    bg: 'bg-slate-900',
-                                    widgets: [
-                                        { id: 't1', type: 'clock', x: 100, y: 100, w: 280, h: 160, z: 1, allowInteraction: false, data: { is24h: false, showSeconds: true } }
-                                    ],
-                                    polls: {}
-                                }
-                            });
-                        }
-                    },
-                    getSessionData: function(code) {
-                         if (this.successCallback) {
-                            this.successCallback({
-                                success: true,
-                                active: true,
-                                data: {
-                                    paused: false,
-                                    widgets: [],
-                                    polls: {'poll-1': {A: 5, B: 3}}
-                                }
-                            });
-                        }
-                    },
-                    updateSession: function(code, data) { console.log("Session updated"); },
-                    setSessionPaused: function(code, paused) {
-                         if (this.successCallback) this.successCallback({ success: true, paused: paused });
-                    },
-                    endSession: function(code) {
-                         if (this.successCallback) this.successCallback({ success: true });
-                    },
-                    saveDashboard: function(name, state) {
-                        if (this.successCallback) this.successCallback({ success: true, message: 'Saved!' });
-                    },
-                    getDashboards: function() {
-                        if (this.successCallback) this.successCallback(JSON.stringify({
-                            'My Saved Dashboard': { bg: 'bg-slate-900', widgets: [] }
-                        }));
-                    },
-                    updateWidgetState: function(code, id, state) { console.log("Widget updated"); },
-                    submitPollResponse: function(code, id, opt) {
-                         if (this.successCallback) this.successCallback({ success: true, polls: {A: 1, B: 0} });
-                    },
-                    getScriptUrl: function() {
-                         if (this.successCallback) this.successCallback("https://script.google.com/macros/s/...");
+                run: (function() {
+                    function Runner(success, failure) {
+                        this._success = success;
+                        this._failure = failure;
                     }
-                }
+
+                    Runner.prototype.withSuccessHandler = function(cb) {
+                        return new Runner(cb, this._failure);
+                    };
+
+                    Runner.prototype.withFailureHandler = function(cb) {
+                        return new Runner(this._success, cb);
+                    };
+
+                    // Define API methods
+                    const methods = {
+                        createSession: function(data) {
+                            if (this._success) {
+                                this._success({
+                                    success: true,
+                                    code: 'DEMO12',
+                                    data: JSON.parse(data)
+                                });
+                            }
+                        },
+                        joinSession: function(code) {
+                            if (this._success) {
+                                this._success({
+                                    success: true,
+                                    data: {
+                                        bg: 'bg-slate-900',
+                                        widgets: [
+                                            { id: 't1', type: 'clock', x: 100, y: 100, w: 280, h: 160, z: 1, allowInteraction: false, data: { is24h: false, showSeconds: true } }
+                                        ],
+                                        polls: {}
+                                    }
+                                });
+                            }
+                        },
+                        getSessionData: function(code) {
+                            if (this._success) {
+                                this._success({
+                                    success: true,
+                                    active: true,
+                                    data: {
+                                        paused: false,
+                                        widgets: [],
+                                        polls: {'poll-1': {A: 5, B: 3}}
+                                    }
+                                });
+                            }
+                        },
+                        updateSession: function(code, data) {
+                            console.log("Session updated");
+                        },
+                        setSessionPaused: function(code, paused) {
+                            if (this._success) this._success({ success: true, paused: paused });
+                        },
+                        endSession: function(code) {
+                            if (this._success) this._success({ success: true });
+                        },
+                        saveDashboard: function(name, state) {
+                            if (this._success) this._success({ success: true, message: 'Saved!' });
+                        },
+                        getDashboards: function() {
+                            if (this._success) this._success(JSON.stringify({
+                                'My Saved Dashboard': { bg: 'bg-slate-900', widgets: [] }
+                            }));
+                        },
+                        updateWidgetState: function(code, id, state) {
+                            console.log("Widget updated");
+                        },
+                        submitPollResponse: function(code, id, opt) {
+                            if (this._success) this._success({ success: true, polls: {A: 1, B: 0} });
+                        },
+                        getScriptUrl: function() {
+                            if (this._success) this._success("https://script.google.com/macros/s/...");
+                        }
+                    };
+
+                    // Attach methods to Runner prototype
+                    Object.assign(Runner.prototype, methods);
+
+                    // Return a default instance which serves as the root google.script.run
+                    return new Runner(null, null);
+                })()
             }
         };
         window.spawnWidget = window.spawnWidget || function() {
@@ -179,10 +200,23 @@ class Director:
         self.page.wait_for_timeout(300)
 
     def type(self, locator, text):
-        """Cinematic type: click then slow type."""
+        """Cinematic type: click then slow type (simulates user typing)."""
         self.click(locator)
         locator.type(text, delay=100)
         self.page.wait_for_timeout(500)
+
+    def fill(self, locator, text):
+        """Immediate fill: moves to element then fills value (for replacements)."""
+        self.move_to(locator)
+        self.page.wait_for_timeout(100)
+        locator.fill(text)
+        self.page.wait_for_timeout(300)
+
+    def press(self, locator, key):
+        """Press a key on the element."""
+        self.move_to(locator)
+        locator.press(key)
+        self.page.wait_for_timeout(300)
 
     def zoom_to_widget(self, locator):
         """Zooms the camera to frame the widget."""
@@ -192,10 +226,10 @@ class Director:
             cx = box['x'] + box['width'] / 2
             cy = box['y'] + box['height'] / 2
 
-            target_h = 720 * 0.6
+            target_h = 720 * ZOOM_TARGET_HEIGHT_RATIO
             scale = target_h / box['height']
-            if scale < 1.2: scale = 1.2
-            if scale > 2.5: scale = 2.5
+            if scale < ZOOM_MIN_SCALE: scale = ZOOM_MIN_SCALE
+            if scale > ZOOM_MAX_SCALE: scale = ZOOM_MAX_SCALE
 
             self.page.evaluate(f"window.setCamera({cx}, {cy}, {scale})")
             self.page.wait_for_timeout(1200)
@@ -270,7 +304,7 @@ def scenario_timer(d):
     d.click(w.locator(".btn-reset"))
 
     d.click(w.locator(".btn-settings"))
-    d.page.locator(".inp-min").fill("1")
+    d.type(w.locator(".inp-min"), "1")
     d.click(w.locator(".btn-settings-done"))
     d.reset_camera()
 
@@ -297,7 +331,8 @@ def scenario_dice(d):
     d.page.wait_for_timeout(1000)
 
     d.click(w.locator(".btn-settings"))
-    d.page.locator(".inp-count").select_option("3")
+    d.click(w.locator(".inp-count")) # Focus first
+    w.locator(".inp-count").select_option("3") # Standard select
     d.click(w.locator(".btn-settings-done"))
 
     d.click(w.locator(".btn-roll"))
@@ -375,7 +410,7 @@ def scenario_random(d):
     d.zoom_to_widget(w)
 
     d.click(w.locator(".btn-settings"))
-    d.page.locator(".inp-list").fill("Emily\\nMichael\\nJacob\\nJoshua\\nMatthew")
+    d.fill(w.locator(".inp-list"), "Emily\\nMichael\\nJacob\\nJoshua\\nMatthew")
     d.click(w.locator(".btn-settings-done"))
     d.click(w.locator(".btn-pick"))
     d.page.wait_for_timeout(2000)
@@ -419,6 +454,8 @@ def scenario_drawing(d):
 
     canvas = w.locator("canvas")
     box = canvas.bounding_box()
+    if not box:
+        raise RuntimeError("Canvas bounding box not found")
 
     d.page.mouse.move(box["x"] + 100, box["y"] + 100)
     d.page.mouse.down()
@@ -468,8 +505,8 @@ def scenario_save_load(d):
     d.page.wait_for_timeout(1000)
     d.click(d.page.locator("#btn-my-dashboards"))
     d.click(d.page.locator(".btn-edit").first)
-    d.type(d.page.locator(".dashboard-rename-input").first, "Renamed")
-    d.page.locator(".dashboard-rename-input").first.press("Enter")
+    d.fill(d.page.locator(".dashboard-rename-input").first, "Renamed")
+    d.press(d.page.locator(".dashboard-rename-input").first, "Enter")
     d.click(d.page.locator("#btn-my-dashboards"))
 
 def scenario_teacher_session(d):
