@@ -1,7 +1,6 @@
 
 from playwright.sync_api import sync_playwright
 import os
-import time
 import sys
 
 def run(playwright):
@@ -57,7 +56,7 @@ def run(playwright):
             """)
 
             # Wait for page to settle
-            page.wait_for_load_state('networkidle')
+            page.wait_for_load_state('load')
 
             # Spawn Widget 1 & 2 safely
             page.evaluate("type => spawnWidget(type)", widget_type)
@@ -97,13 +96,14 @@ def run(playwright):
 
             # Flip the second widget to settings
             settings_btn = page.locator("#widget-2 .btn-settings")
-            if settings_btn.is_visible():
+            try:
+                settings_btn.wait_for(state="visible", timeout=5000)
                 settings_btn.click()
                 # Wait for the flip animation to potentially finish
                 # The CSS transition is 0.6s.
                 page.wait_for_timeout(1000)
-            else:
-                print(f"Warning: Settings button not found for {widget_type}")
+            except Exception:
+                print(f"Warning: Settings button not found or not visible for {widget_type}")
 
             # Take screenshot
             output_path = f"onboarding-video/public/{widget_type}_comparison.png"
