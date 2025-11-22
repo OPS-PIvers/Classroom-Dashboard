@@ -31,7 +31,6 @@ def mock_google_script(page):
                     },
                     joinSession: function(code) {
                         if (this.successCallback) {
-                            // Mock response for joining
                             this.successCallback({
                                 success: true,
                                 data: {
@@ -45,7 +44,6 @@ def mock_google_script(page):
                         }
                     },
                     getSessionData: function(code) {
-                        // Mock polling response
                          if (this.successCallback) {
                             this.successCallback({
                                 success: true,
@@ -76,46 +74,150 @@ def mock_google_script(page):
                     updateWidgetState: function(code, id, state) { console.log("Widget updated"); },
                     submitPollResponse: function(code, id, opt) {
                          if (this.successCallback) this.successCallback({ success: true, polls: {A: 1, B: 0} });
+                    },
+                    getScriptUrl: function() {
+                         if (this.successCallback) this.successCallback("https://script.google.com/macros/s/...");
                     }
                 }
             }
         };
-
-        // Global helper to verify widgets are spawned
         window.spawnWidget = window.spawnWidget || function() { console.log("Real spawnWidget not ready yet"); };
     """)
 
+def inject_cinematic_styles(page):
+    """Injects CSS/JS for custom cursor and camera animations."""
+    page.evaluate("""
+        // Inject Cursor
+        const cursor = document.createElement('div');
+        cursor.className = 'cinematic-cursor';
+        cursor.innerHTML = `<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M6 2L26 16L16 18L14 28L6 2Z" fill="black" stroke="white" stroke-width="2" stroke-linejoin="round"/>
+        </svg>`;
+        Object.assign(cursor.style, {
+            position: 'fixed', top: '0', left: '0', pointerEvents: 'none', zIndex: '100000',
+            transition: 'transform 0.1s cubic-bezier(0.2, 0, 0.2, 1)', transformOrigin: 'top left'
+        });
+        document.body.appendChild(cursor);
+
+        // Track mouse
+        let mouseX = 0, mouseY = 0;
+        document.addEventListener('mousemove', e => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+            cursor.style.transform = `translate(${mouseX}px, ${mouseY}px)`;
+        });
+
+        document.addEventListener('mousedown', () => {
+            cursor.innerHTML = `<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M6 2L26 16L16 18L14 28L6 2Z" fill="#4f46e5" stroke="white" stroke-width="2" stroke-linejoin="round"/>
+            </svg>`;
+            cursor.style.transform = `translate(${mouseX}px, ${mouseY}px) scale(0.8)`;
+        });
+
+        document.addEventListener('mouseup', () => {
+            cursor.innerHTML = `<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M6 2L26 16L16 18L14 28L6 2Z" fill="black" stroke="white" stroke-width="2" stroke-linejoin="round"/>
+            </svg>`;
+            cursor.style.transform = `translate(${mouseX}px, ${mouseY}px) scale(1)`;
+        });
+
+        // Camera Control
+        window.setCamera = function(x, y, scale) {
+            const container = document.getElementById('app-container');
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+
+            // Calculate translation to center (x,y) on screen
+            // T = (ScreenCenter - Point) * Scale
+            // But wait, we want to zoom INTO (x,y).
+            // transform-origin is default center.
+            // Let's set transform-origin to 0 0 to be simple.
+            container.style.transformOrigin = '0 0';
+            container.style.transition = 'transform 1.2s cubic-bezier(0.25, 1, 0.5, 1)';
+
+            if (scale === 1) {
+                container.style.transform = 'translate(0, 0) scale(1)';
+            } else {
+                // We want (x,y) of the content to be at center of screen (w/2, h/2)
+                // tx = w/2 - x*scale
+                // ty = h/2 - y*scale
+                const tx = (w/2) - (x * scale);
+                const ty = (h/2) - (y * scale);
+                container.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+            }
+        };
+    """)
+
+class Director:
+    def __init__(self, page):
+        self.page = page
+
+    def move_to(self, locator):
+        """Smooth move to center of locator."""
+        box = locator.bounding_box()
+        if box:
+            x = box['x'] + box['width'] / 2
+            y = box['y'] + box['height'] / 2
+            self.page.mouse.move(x, y, steps=30)
+            return x, y
+        return 0, 0
+
+    def click(self, locator):
+        self.move_to(locator)
+        self.page.wait_for_timeout(100)
+        locator.click()
+        self.page.wait_for_timeout(300)
+
+    def type(self, locator, text):
+        self.click(locator)
+        locator.type(text, delay=100) # Slow typing
+        self.page.wait_for_timeout(500)
+
+    def zoom_to_widget(self, locator):
+        # Wait for widget animation/rendering
+        self.page.wait_for_timeout(500)
+        box = locator.bounding_box()
+        if box:
+            cx = box['x'] + box['width'] / 2
+            cy = box['y'] + box['height'] / 2
+
+            # Calculate needed scale
+            # Target height is 60% of screen height
+            target_h = 720 * 0.6
+            scale = target_h / box['height']
+            if scale < 1.2: scale = 1.2 # Minimum zoom
+            if scale > 2.5: scale = 2.5 # Max zoom
+
+            self.page.evaluate(f"window.setCamera({cx}, {cy}, {scale})")
+            self.page.wait_for_timeout(1200) # Wait for zoom
+
+    def reset_camera(self):
+        self.page.evaluate("window.setCamera(0, 0, 1)")
+        self.page.wait_for_timeout(1200)
+
 def record_scenario(playwright, name, action_callback):
-    """
-    Runs a recording scenario.
-    - playwright: The playwright instance.
-    - name: The name of the output video file (e.g., 'clock').
-    - action_callback: A function receiving (page) to perform actions.
-    """
     print(f"--- Recording Scenario: {name} ---")
     browser = playwright.chromium.launch(headless=True)
-
-    # Create context with video recording
     context = browser.new_context(
         record_video_dir=OUTPUT_DIR,
         record_video_size={"width": 1280, "height": 720},
         viewport={"width": 1280, "height": 720}
     )
-
     page = context.new_page()
     page.goto(URL_FILE)
-    mock_google_script(page)
 
+    mock_google_script(page)
+    inject_cinematic_styles(page)
+
+    director = Director(page)
     try:
-        action_callback(page)
+        action_callback(director)
     except Exception as e:
         print(f"Error in scenario {name}: {e}")
 
-    # Close context to save video
     context.close()
     browser.close()
 
-    # Rename video
     video_path = page.video.path()
     if video_path and os.path.exists(video_path):
         new_path = os.path.join(OUTPUT_DIR, f"{name}.webm")
@@ -123,412 +225,239 @@ def record_scenario(playwright, name, action_callback):
             os.remove(new_path)
         os.rename(video_path, new_path)
         print(f"Saved video: {new_path}")
-    else:
-        print(f"Warning: No video found for {name}")
 
 # --- Scenarios ---
 
-def scenario_clock(page):
-    page.evaluate("spawnWidget('clock')")
-    w = page.locator(".widget", has_text="Clock")
+def scenario_clock(d):
+    d.page.evaluate("spawnWidget('clock')")
+    w = d.page.locator(".widget", has_text="Clock")
     w.wait_for()
-    page.wait_for_timeout(1000)
+    d.zoom_to_widget(w)
 
-    # Open settings
-    w.locator(".btn-settings").click()
-    page.wait_for_timeout(500)
+    d.click(w.locator(".btn-settings"))
+    d.click(w.locator(".inp-24h"))
+    d.click(w.locator(".btn-settings-done"))
+    d.reset_camera()
 
-    # Toggle 24h
-    w.locator(".inp-24h").click()
-    page.wait_for_timeout(1000)
-
-    # Close settings
-    w.locator(".btn-settings-done").click()
-    page.wait_for_timeout(1000)
-
-def scenario_timer(page):
-    page.evaluate("spawnWidget('timer')")
-    w = page.locator(".widget", has_text="Timer")
+def scenario_timer(d):
+    d.page.evaluate("spawnWidget('timer')")
+    w = d.page.locator(".widget", has_text="Timer")
     w.wait_for()
+    d.zoom_to_widget(w)
 
-    # Start
-    w.locator(".btn-start").click()
-    page.wait_for_timeout(2000) # Let it count down
+    d.click(w.locator(".btn-start"))
+    d.page.wait_for_timeout(2000)
+    d.click(w.locator(".btn-pause"))
+    d.click(w.locator(".btn-reset"))
 
-    # Pause
-    w.locator(".btn-pause").click()
-    page.wait_for_timeout(500)
+    d.click(w.locator(".btn-settings"))
+    d.page.locator(".inp-min").fill("1") # Direct fill for inputs without click sometimes better
+    d.click(w.locator(".btn-settings-done"))
+    d.reset_camera()
 
-    # Reset
-    w.locator(".btn-reset").click()
-    page.wait_for_timeout(500)
-
-    # Settings: Change time to 1 min
-    w.locator(".btn-settings").click()
-    page.wait_for_timeout(500)
-    w.locator(".inp-min").fill("1")
-    w.locator(".inp-min").dispatch_event("change") # Ensure event fires
-    page.wait_for_timeout(500)
-    w.locator(".btn-settings-done").click()
-    page.wait_for_timeout(1000)
-
-def scenario_traffic(page):
-    page.evaluate("spawnWidget('traffic')")
-    w = page.locator(".widget", has_text="Signal")
+def scenario_traffic(d):
+    d.page.evaluate("spawnWidget('traffic')")
+    w = d.page.locator(".widget", has_text="Signal")
     w.wait_for()
+    d.zoom_to_widget(w)
 
-    # Click Red
-    w.locator(".traffic-light[data-color='red']").click()
-    page.wait_for_timeout(1000)
+    d.click(w.locator(".traffic-light[data-color='red']"))
+    d.click(w.locator(".traffic-light[data-color='yellow']"))
+    d.click(w.locator(".traffic-light[data-color='green']"))
+    d.reset_camera()
 
-    # Click Yellow
-    w.locator(".traffic-light[data-color='yellow']").click()
-    page.wait_for_timeout(1000)
-
-    # Click Green
-    w.locator(".traffic-light[data-color='green']").click()
-    page.wait_for_timeout(1000)
-
-def scenario_dice(page):
-    page.evaluate("spawnWidget('dice')")
-    w = page.locator(".widget", has_text="Dice")
+def scenario_dice(d):
+    d.page.evaluate("spawnWidget('dice')")
+    w = d.page.locator(".widget", has_text="Dice")
     w.wait_for()
+    d.zoom_to_widget(w)
 
-    # Roll 1
-    w.locator(".btn-roll").click()
-    page.wait_for_timeout(1500)
+    d.click(w.locator(".btn-roll"))
+    d.page.wait_for_timeout(1000)
 
-    # Settings -> 3 Dice
-    w.locator(".btn-settings").click()
-    page.wait_for_timeout(500)
-    w.locator(".inp-count").select_option("3")
-    w.locator(".btn-settings-done").click()
-    page.wait_for_timeout(500)
+    d.click(w.locator(".btn-settings"))
+    d.page.locator(".inp-count").select_option("3")
+    d.click(w.locator(".btn-settings-done"))
 
-    # Roll 3
-    w.locator(".btn-roll").click()
-    page.wait_for_timeout(1500)
+    d.click(w.locator(".btn-roll"))
+    d.page.wait_for_timeout(1000)
+    d.reset_camera()
 
-def scenario_qr(page):
-    page.evaluate("spawnWidget('qr')")
-    w = page.locator(".widget", has_text="QR Code")
+def scenario_qr(d):
+    d.page.evaluate("spawnWidget('qr')")
+    w = d.page.locator(".widget", has_text="QR Code")
     w.wait_for()
+    d.zoom_to_widget(w)
 
-    page.wait_for_timeout(1000)
+    d.click(w.locator(".btn-settings"))
+    d.type(w.locator(".inp-url"), "https://classroom.google.com")
+    d.click(w.locator(".btn-settings-done"))
+    d.reset_camera()
 
-    # Settings
-    w.locator(".btn-settings").click()
-    page.wait_for_timeout(500)
-
-    w.locator(".inp-url").fill("https://classroom.google.com")
-    w.locator(".inp-url").dispatch_event("input") # Trigger update
-    page.wait_for_timeout(1500)
-
-    w.locator(".btn-settings-done").click()
-    page.wait_for_timeout(1000)
-
-def scenario_text(page):
-    page.evaluate("spawnWidget('text')")
-    w = page.locator(".widget", has_text="Note")
+def scenario_text(d):
+    d.page.evaluate("spawnWidget('text')")
+    w = d.page.locator(".widget", has_text="Note")
     w.wait_for()
+    d.zoom_to_widget(w)
 
-    # Type text
-    area = w.locator(".widget-content div[contenteditable]")
-    area.click()
-    area.fill("Welcome to Class!")
-    page.wait_for_timeout(1000)
+    d.type(w.locator(".widget-content div[contenteditable]"), "Welcome to Class!")
 
-    # Settings: Change Background Color
-    w.locator(".btn-settings").click()
-    page.wait_for_timeout(500)
+    d.click(w.locator(".btn-settings"))
+    d.click(w.locator(".bg-picker").nth(1))
+    d.click(w.locator(".btn-settings-done"))
+    d.reset_camera()
 
-    # Pick a color (e.g., yellow)
-    w.locator(".bg-picker").nth(1).click()
-    page.wait_for_timeout(1000)
-
-    # Change Font Size
-    w.locator(".inp-size").fill("36")
-    w.locator(".inp-size").dispatch_event("input")
-    page.wait_for_timeout(1000)
-
-    w.locator(".btn-settings-done").click()
-    page.wait_for_timeout(1000)
-
-def scenario_checklist(page):
-    page.evaluate("spawnWidget('checklist')")
-    w = page.locator(".widget", has_text="Checklist")
+def scenario_checklist(d):
+    d.page.evaluate("spawnWidget('checklist')")
+    w = d.page.locator(".widget", has_text="Checklist")
     w.wait_for()
+    d.zoom_to_widget(w)
 
-    # Settings: Add items
-    w.locator(".btn-settings").click()
-    page.wait_for_timeout(500)
+    d.click(w.locator(".btn-settings"))
+    d.type(w.locator(".inp-list"), "Turn in Homework") # Simplified for smooth typing
+    d.click(w.locator(".btn-update"))
+    d.click(w.locator(".check-item input").first)
+    d.reset_camera()
 
-    w.locator(".inp-list").fill("Turn in Homework\\nRead Chapter 4\\nGroup Discussion")
-    w.locator(".btn-update").click()
-    page.wait_for_timeout(1000)
-
-    # Check an item
-    w.locator(".check-item input").first.click()
-    page.wait_for_timeout(1000)
-
-def scenario_timetable(page):
-    page.evaluate("spawnWidget('timetable')")
-    w = page.locator(".widget", has_text="Timetable")
+def scenario_timetable(d):
+    d.page.evaluate("spawnWidget('timetable')")
+    w = d.page.locator(".widget", has_text="Timetable")
     w.wait_for()
+    d.zoom_to_widget(w)
 
-    # Settings: Add data
-    w.locator(".btn-settings").click()
-    page.wait_for_timeout(500)
+    d.click(w.locator(".btn-settings"))
+    d.type(w.locator(".inp-data"), "09:00 | Mathematics")
+    d.click(w.locator(".btn-apply"))
+    d.reset_camera()
 
-    w.locator(".inp-data").fill("09:00 | Mathematics\\n10:00 | Morning Break\\n10:30 | Science Lab")
-    w.locator(".btn-apply").click()
-    page.wait_for_timeout(1500)
-
-def scenario_embed(page):
-    page.evaluate("spawnWidget('embed')")
-    w = page.locator(".widget", has_text="Embed")
+def scenario_embed(d):
+    d.page.evaluate("spawnWidget('embed')")
+    w = d.page.locator(".widget", has_text="Embed")
     w.wait_for()
+    d.zoom_to_widget(w)
 
-    # Settings: Load URL
-    w.locator(".btn-settings").click()
-    page.wait_for_timeout(500)
+    d.click(w.locator(".btn-settings"))
+    d.type(w.locator(".inp-embed"), "https://example.com")
+    d.click(w.locator(".btn-load"))
+    d.reset_camera()
 
-    w.locator(".inp-embed").fill("https://example.com")
-    w.locator(".btn-load").click()
-    page.wait_for_timeout(2000)
-
-def scenario_random(page):
-    page.evaluate("spawnWidget('random')")
-    w = page.locator(".widget", has_text="Name Picker")
+def scenario_random(d):
+    d.page.evaluate("spawnWidget('random')")
+    w = d.page.locator(".widget", has_text="Name Picker")
     w.wait_for()
+    d.zoom_to_widget(w)
 
-    # Settings: Add 2004 baby names
-    w.locator(".btn-settings").click()
-    page.wait_for_timeout(500)
+    d.click(w.locator(".btn-settings"))
+    # Use fill for long text to save time, typing animation too long here
+    d.page.locator(".inp-list").fill("Emily\\nMichael\\nJacob\\nJoshua\\nMatthew")
+    d.click(w.locator(".btn-settings-done"))
+    d.click(w.locator(".btn-pick"))
+    d.page.wait_for_timeout(2000)
+    d.reset_camera()
 
-    names = "Emily\\nMichael\\nJacob\\nJoshua\\nMatthew\\nEthan\\nAndrew\\nDaniel\\nWilliam\\nJoseph\\nChristopher\\nAnthony\\nRyan\\nNicholas\\nDavid"
-    w.locator(".inp-list").fill(names)
-
-    # Pick One
-    w.locator(".btn-settings-done").click()
-    page.wait_for_timeout(500)
-    w.locator(".btn-pick").click()
-    page.wait_for_timeout(2500) # Wait for animation
-
-    # Group Mode
-    w.locator(".btn-settings").click()
-    page.wait_for_timeout(500)
-    w.locator(".inp-mode").select_option("groups")
-    w.locator(".inp-group-size").fill("3")
-    w.locator(".btn-settings-done").click()
-    page.wait_for_timeout(500)
-    w.locator(".btn-pick").click()
-    page.wait_for_timeout(2000)
-
-def scenario_sound(page):
-    page.evaluate("spawnWidget('sound')")
-    w = page.locator(".widget", has_text="Noise Level")
+def scenario_sound(d):
+    d.page.evaluate("spawnWidget('sound')")
+    w = d.page.locator(".widget", has_text="Noise Level")
     w.wait_for()
+    d.zoom_to_widget(w)
 
-    # Inject script to mock microphone visual
-    page.evaluate("""
+    d.page.evaluate("""
         const bar = document.querySelector('.mic-bar');
         if(bar) {
             let h = 10;
-            setInterval(() => {
-                h = Math.random() * 80 + 10;
-                bar.style.height = h + '%';
-            }, 100);
+            setInterval(() => { h = Math.random() * 80 + 10; bar.style.height = h + '%'; }, 100);
         }
     """)
+    d.page.evaluate("navigator.mediaDevices.getUserMedia = () => Promise.resolve(new MediaStream())")
+    d.click(w.locator(".btn-mic-start"))
+    d.page.wait_for_timeout(3000)
+    d.reset_camera()
 
-    # Click Enable (even though we mock, it changes UI state)
-    # We need to mock getUserMedia to avoid error
-    page.evaluate("navigator.mediaDevices.getUserMedia = () => Promise.resolve(new MediaStream())")
-    w.locator(".btn-mic-start").click()
-    page.wait_for_timeout(3000)
-
-def scenario_drawing(page):
-    page.evaluate("spawnWidget('drawing')")
-    w = page.locator(".widget", has_text="Sketch")
+def scenario_drawing(d):
+    d.page.evaluate("spawnWidget('drawing')")
+    w = d.page.locator(".widget", has_text="Sketch")
     w.wait_for()
+    d.zoom_to_widget(w)
 
-    # Locate canvas
     canvas = w.locator("canvas")
     box = canvas.bounding_box()
 
-    if box:
-        # Draw a smile
-        # Left eye
-        page.mouse.move(box["x"] + 100, box["y"] + 100)
-        page.mouse.down()
-        page.mouse.move(box["x"] + 100, box["y"] + 101) # dot
-        page.mouse.up()
+    # Custom draw implementation via mouse moves
+    d.page.mouse.move(box["x"] + 100, box["y"] + 100)
+    d.page.mouse.down()
+    d.page.mouse.move(box["x"] + 200, box["y"] + 100, steps=20)
+    d.page.mouse.up()
 
-        # Right eye
-        page.mouse.move(box["x"] + 200, box["y"] + 100)
-        page.mouse.down()
-        page.mouse.move(box["x"] + 200, box["y"] + 101) # dot
-        page.mouse.up()
+    d.move_to(w) # Hover to show tools
+    d.click(w.locator(".btn-color[data-color='#ef4444']"))
 
-        # Smile
-        page.mouse.move(box["x"] + 80, box["y"] + 180)
-        page.mouse.down()
-        page.mouse.move(box["x"] + 150, box["y"] + 220)
-        page.mouse.move(box["x"] + 220, box["y"] + 180)
-        page.mouse.up()
+    d.page.mouse.move(box["x"] + 50, box["y"] + 50)
+    d.page.mouse.down()
+    d.page.mouse.move(box["x"] + 300, box["y"] + 300, steps=20)
+    d.page.mouse.up()
+    d.reset_camera()
 
-    page.wait_for_timeout(1000)
-
-    # Change color (requires hover to show tools)
-    w.hover()
-    page.wait_for_timeout(500)
-    w.locator(".btn-color[data-color='#ef4444']").click() # Red
-
-    # Draw red line
-    page.mouse.move(box["x"] + 50, box["y"] + 50)
-    page.mouse.down()
-    page.mouse.move(box["x"] + 300, box["y"] + 50)
-    page.mouse.up()
-
-    page.wait_for_timeout(1500)
-
-def scenario_backgrounds(page):
-    page.wait_for_timeout(500)
-
-    # Open BG Menu
-    page.locator("#btn-bg-menu").click()
-    page.wait_for_timeout(1000)
-
-    # Select gradients/colors
-    page.locator(".bg-opt").nth(1).click() # Gradient
-    page.wait_for_timeout(1500)
-
-    page.locator("#btn-bg-menu").click()
-    page.locator(".bg-opt").nth(2).click() # Emerald
-    page.wait_for_timeout(1500)
-
-    page.locator("#btn-bg-menu").click()
-    page.locator(".bg-opt").last.click() # Grid
-    page.wait_for_timeout(1500)
-
-def scenario_save_load(page):
-    # Add a widget to make it interesting
-    page.evaluate("spawnWidget('clock')")
-    page.wait_for_timeout(1000)
-
-    # Click Save
-    # We need to handle the prompt.
-    # Playwright can handle dialogs.
-
-    def handle_dialog(dialog):
-        dialog.accept("My Demo Dashboard")
-
-    page.on("dialog", handle_dialog)
-
-    page.locator("#btn-save").click()
-    page.wait_for_timeout(2000) # Wait for toast "Saved!"
-
-    # Open Load Menu
-    page.locator("#btn-my-dashboards").click()
-    page.wait_for_timeout(1000)
-
-    # Rename
-    page.locator(".btn-edit").first.click()
-    page.wait_for_timeout(500)
-    page.locator(".dashboard-rename-input").first.fill("Renamed Dashboard")
-    page.locator(".dashboard-rename-input").first.press("Enter")
-    page.wait_for_timeout(1000)
-
-    # Close
-    page.locator("#btn-my-dashboards").click()
-
-def scenario_poll(page):
-    page.evaluate("spawnWidget('poll')")
-    w = page.locator(".widget", has_text="Quick Poll")
+def scenario_poll(d):
+    d.page.evaluate("spawnWidget('poll')")
+    w = d.page.locator(".widget", has_text="Quick Poll")
     w.wait_for()
+    d.zoom_to_widget(w)
 
-    # Settings
-    w.locator(".btn-settings").click()
-    page.wait_for_timeout(500)
+    d.click(w.locator(".btn-settings"))
+    d.type(w.locator(".inp-opt-a"), "Yes")
+    d.type(w.locator(".inp-opt-b"), "No")
+    d.click(w.locator(".btn-settings-done"))
 
-    w.locator(".inp-opt-a").fill("Pizza")
-    w.locator(".inp-opt-b").fill("Tacos")
-    w.locator(".btn-settings-done").click()
-    page.wait_for_timeout(1000)
+    d.click(w.locator(".btn-vote").first)
+    d.click(w.locator(".btn-vote").last)
+    d.click(w.locator(".btn-reset"))
+    d.reset_camera()
 
-    # Vote A
-    w.locator(".btn-vote").first.click()
-    page.wait_for_timeout(1000)
+def scenario_backgrounds(d):
+    d.click(d.page.locator("#btn-bg-menu"))
+    d.click(d.page.locator(".bg-opt").nth(1))
+    d.click(d.page.locator("#btn-bg-menu"))
+    d.click(d.page.locator(".bg-opt").nth(2))
+    d.click(d.page.locator("#btn-bg-menu"))
+    d.click(d.page.locator(".bg-opt").last)
 
-    # Vote B
-    w.locator(".btn-vote").last.click()
-    page.wait_for_timeout(1000)
+def scenario_save_load(d):
+    d.page.evaluate("spawnWidget('clock')")
+    d.page.on("dialog", lambda dialog: dialog.accept("Demo Dashboard"))
+    d.click(d.page.locator("#btn-save"))
+    d.page.wait_for_timeout(1000)
+    d.click(d.page.locator("#btn-my-dashboards"))
+    d.click(d.page.locator(".btn-edit").first)
+    d.type(d.page.locator(".dashboard-rename-input").first, "Renamed")
+    d.page.locator(".dashboard-rename-input").first.press("Enter")
+    d.click(d.page.locator("#btn-my-dashboards"))
 
-    # Reset
-    w.locator(".btn-reset").click()
-    page.wait_for_timeout(1000)
+def scenario_teacher_session(d):
+    d.click(d.page.locator("#btn-start-session"))
+    d.click(d.page.locator("#btn-menu-start-session"))
+    d.page.wait_for_timeout(1000)
+    d.click(d.page.locator("#btn-copy-link"))
 
-def scenario_teacher_session(page):
-    # Start Session
-    page.locator("#btn-start-session").click()
-    page.wait_for_selector("#session-menu", state="visible")
-    page.locator("#btn-menu-start-session").click()
-    page.wait_for_selector("#session-indicator", state="visible")
-    page.wait_for_timeout(1500)
+    d.page.wait_for_timeout(1000)
+    d.page.evaluate("document.getElementById('session-menu').classList.remove('hidden')")
+    d.click(d.page.locator("#btn-menu-pause"))
 
-    # Copy Link
-    page.locator("#btn-copy-link").click()
-    page.wait_for_timeout(2000)
+    d.page.wait_for_timeout(1000)
+    d.page.evaluate("document.getElementById('session-menu').classList.remove('hidden')")
+    d.click(d.page.locator("#btn-menu-resume"))
 
-    # Pause
-    page.wait_for_timeout(1000)
-    # Force open menu if toggle fails
-    page.evaluate("document.getElementById('session-menu').classList.remove('hidden')")
-    page.wait_for_selector("#session-menu", state="visible")
-    page.locator("#btn-menu-pause").click()
-    page.wait_for_timeout(2000) # Wait for toast/update
+    d.click(d.page.locator("#btn-end-session"))
 
-    # Resume
-    page.wait_for_timeout(1000)
-    page.evaluate("document.getElementById('session-menu').classList.remove('hidden')")
-    page.wait_for_selector("#session-menu", state="visible")
-    page.locator("#btn-menu-resume").click()
-    page.wait_for_timeout(2000)
-
-    # End Session
-    page.locator("#btn-end-session").click()
-    page.wait_for_timeout(1500)
-
-def scenario_student_join(page):
-    # Simulate loading with join code via URL param wouldn't work because we load local file.
-    # We use the Join Screen manually.
-
-    page.locator("#student-join-screen").evaluate("el => el.classList.remove('hidden')")
-    page.locator("#toolbar-container").evaluate("el => el.classList.add('hidden')")
-    page.wait_for_timeout(1000)
-
-    # Enter Code
-    page.locator("#join-code-input").fill("DEMO12")
-    page.wait_for_timeout(500)
-    page.locator("#btn-join-session").click()
-
-    # Wait for student header
-    page.locator("#student-header").wait_for()
-    page.wait_for_timeout(2000)
-
-    # Verify pinned widget (mocked in joinSession response)
-    w = page.locator(".widget", has_text="Clock (Shared)")
-    w.wait_for()
-    page.wait_for_timeout(2000)
-
-    # Leave
-    page.locator("#btn-leave-session").click()
-    page.wait_for_timeout(1000)
+def scenario_student_join(d):
+    d.page.locator("#student-join-screen").evaluate("el => el.classList.remove('hidden')")
+    d.page.locator("#toolbar-container").evaluate("el => el.classList.add('hidden')")
+    d.type(d.page.locator("#join-code-input"), "DEMO12")
+    d.click(d.page.locator("#btn-join-session"))
+    d.page.wait_for_timeout(2000)
+    d.click(d.page.locator("#btn-leave-session"))
 
 def main():
     os.makedirs(OUTPUT_DIR, exist_ok=True)
-
     with sync_playwright() as p:
         record_scenario(p, "clock", scenario_clock)
         record_scenario(p, "timer", scenario_timer)
