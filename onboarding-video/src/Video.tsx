@@ -1,5 +1,16 @@
-import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig, Sequence, spring, Video, staticFile, OffthreadVideo } from 'remotion';
+import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig, Sequence, spring, Video, staticFile, OffthreadVideo, Audio } from 'remotion';
 import React from 'react';
+
+// Audio configuration - place audio files in public/ folder
+const AUDIO_CONFIG = {
+    // Background music (optional) - should be ~217 seconds long
+    backgroundMusic: 'background-music.mp3',
+    backgroundMusicVolume: 0.15,
+    // Sound effects
+    clickSound: 'click.mp3',
+    typeSound: 'type.mp3',
+    whooshSound: 'whoosh.mp3',
+} as const;
 
 // Color constants
 const COLORS = {
@@ -65,7 +76,7 @@ const StylizedCursor: React.FC<{
     );
 };
 
-// Typing text animation component
+// Typing text animation component with enhanced visuals
 const TypingText: React.FC<{
     text: string;
     startFrame?: number;
@@ -73,19 +84,33 @@ const TypingText: React.FC<{
     style?: React.CSSProperties;
 }> = ({ text, startFrame = 0, charsPerFrame = 0.5, style }) => {
     const frame = useCurrentFrame();
+    const { fps } = useVideoConfig();
     const elapsed = Math.max(0, frame - startFrame);
     const chars = Math.min(Math.floor(elapsed * charsPerFrame), text.length);
     const displayText = text.slice(0, chars);
     const showCursor = elapsed > 0 && chars < text.length;
 
+    // Subtle scale bounce on each new character
+    const lastCharFrame = Math.floor(chars / charsPerFrame) + startFrame;
+    const charProgress = frame - lastCharFrame;
+    const charBounce = charProgress < 3 && chars > 0 && chars < text.length
+        ? spring({ frame: charProgress, fps, from: 1.02, to: 1, config: { damping: 20, stiffness: 400 } })
+        : 1;
+
     return (
-        <span style={style}>
+        <span style={{ ...style, display: 'inline-block', transform: `scale(${charBounce})` }}>
             {displayText}
             {showCursor && (
                 <span style={{
-                    opacity: Math.sin(frame * 0.3) > 0 ? 1 : 0,
-                    color: COLORS.PRIMARY_PURPLE,
-                }}>|</span>
+                    display: 'inline-block',
+                    width: '3px',
+                    height: '1em',
+                    marginLeft: '2px',
+                    backgroundColor: COLORS.PRIMARY_PURPLE,
+                    opacity: Math.sin(frame * 0.4) > 0 ? 1 : 0.3,
+                    boxShadow: '0 0 8px rgba(168, 85, 247, 0.5)',
+                    verticalAlign: 'text-bottom',
+                }} />
             )}
         </span>
     );
@@ -537,10 +562,18 @@ export const OnboardingVideo: React.FC = () => {
     const { durationInFrames } = useVideoConfig();
     const progress = frame / durationInFrames;
 
+    // Audio fade in/out
+    const audioFadeIn = interpolate(frame, [0, 60], [0, AUDIO_CONFIG.backgroundMusicVolume], { extrapolateRight: 'clamp' });
+    const audioFadeOut = interpolate(frame, [durationInFrames - 90, durationInFrames], [AUDIO_CONFIG.backgroundMusicVolume, 0], { extrapolateLeft: 'clamp' });
+    const audioVolume = Math.min(audioFadeIn, audioFadeOut);
+
     let currentFrame = 0;
 
     return (
         <AbsoluteFill style={{ backgroundColor: 'white' }}>
+            {/* Background Music - uncomment when audio file is added to public/ */}
+            {/* <Audio src={staticFile(AUDIO_CONFIG.backgroundMusic)} volume={audioVolume} /> */}
+
             {/* Intro */}
             <Sequence from={currentFrame} durationInFrames={INTRO_DURATION}>
                 <Title title="Classroom Dashboard" subtitle="THE ULTIMATE TEACHER'S COMPANION" />

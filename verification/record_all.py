@@ -125,17 +125,29 @@ def mock_google_script(page):
 def inject_cinematic_styles(page):
     """Injects CSS/JS for custom cursor and camera animations."""
     page.evaluate("""
-        // Inject Cursor
+        // Inject larger, more prominent Cursor
         const cursor = document.createElement('div');
         cursor.className = 'cinematic-cursor';
-        cursor.innerHTML = `<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M6 2L26 16L16 18L14 28L6 2Z" fill="black" stroke="white" stroke-width="2" stroke-linejoin="round"/>
+        cursor.innerHTML = `<svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <filter id="cursor-shadow" x="-50%" y="-50%" width="200%" height="200%">
+                <feDropShadow dx="2" dy="4" stdDeviation="3" flood-color="rgba(0,0,0,0.4)"/>
+            </filter>
+            <path d="M8 3L40 24L24 27L21 42L8 3Z" fill="white" stroke="#1e293b" stroke-width="2.5" stroke-linejoin="round" filter="url(#cursor-shadow)"/>
         </svg>`;
         Object.assign(cursor.style, {
             position: 'fixed', top: '0', left: '0', pointerEvents: 'none', zIndex: '100000',
-            transition: 'transform 0.1s cubic-bezier(0.2, 0, 0.2, 1)', transformOrigin: 'top left'
+            transition: 'transform 0.08s cubic-bezier(0.2, 0, 0.2, 1)', transformOrigin: 'top left'
         });
         document.body.appendChild(cursor);
+
+        // Click ripple effect container
+        const rippleContainer = document.createElement('div');
+        rippleContainer.id = 'click-ripples';
+        Object.assign(rippleContainer.style, {
+            position: 'fixed', top: '0', left: '0', width: '100%', height: '100%',
+            pointerEvents: 'none', zIndex: '99999'
+        });
+        document.body.appendChild(rippleContainer);
 
         // Track mouse
         let mouseX = 0, mouseY = 0;
@@ -146,18 +158,50 @@ def inject_cinematic_styles(page):
         });
 
         document.addEventListener('mousedown', () => {
-            cursor.innerHTML = `<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M6 2L26 16L16 18L14 28L6 2Z" fill="#4f46e5" stroke="white" stroke-width="2" stroke-linejoin="round"/>
+            // Change cursor color on click
+            cursor.innerHTML = `<svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <filter id="cursor-shadow" x="-50%" y="-50%" width="200%" height="200%">
+                    <feDropShadow dx="2" dy="4" stdDeviation="3" flood-color="rgba(0,0,0,0.4)"/>
+                </filter>
+                <path d="M8 3L40 24L24 27L21 42L8 3Z" fill="#6366f1" stroke="white" stroke-width="2.5" stroke-linejoin="round" filter="url(#cursor-shadow)"/>
             </svg>`;
-            cursor.style.transform = `translate(${mouseX}px, ${mouseY}px) scale(0.8)`;
+            cursor.style.transform = `translate(${mouseX}px, ${mouseY}px) scale(0.85)`;
+
+            // Create expanding ripple effect
+            const ripple = document.createElement('div');
+            Object.assign(ripple.style, {
+                position: 'absolute',
+                left: (mouseX - 30) + 'px',
+                top: (mouseY - 30) + 'px',
+                width: '60px',
+                height: '60px',
+                borderRadius: '50%',
+                border: '3px solid rgba(99, 102, 241, 0.6)',
+                animation: 'clickRipple 0.5s ease-out forwards'
+            });
+            rippleContainer.appendChild(ripple);
+            setTimeout(() => ripple.remove(), 500);
         });
 
         document.addEventListener('mouseup', () => {
-            cursor.innerHTML = `<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M6 2L26 16L16 18L14 28L6 2Z" fill="black" stroke="white" stroke-width="2" stroke-linejoin="round"/>
+            cursor.innerHTML = `<svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <filter id="cursor-shadow" x="-50%" y="-50%" width="200%" height="200%">
+                    <feDropShadow dx="2" dy="4" stdDeviation="3" flood-color="rgba(0,0,0,0.4)"/>
+                </filter>
+                <path d="M8 3L40 24L24 27L21 42L8 3Z" fill="white" stroke="#1e293b" stroke-width="2.5" stroke-linejoin="round" filter="url(#cursor-shadow)"/>
             </svg>`;
             cursor.style.transform = `translate(${mouseX}px, ${mouseY}px) scale(1)`;
         });
+
+        // Add ripple animation keyframes
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes clickRipple {
+                0% { transform: scale(0.5); opacity: 1; }
+                100% { transform: scale(2); opacity: 0; }
+            }
+        `;
+        document.head.appendChild(style);
 
         // Camera Control
         window.setCamera = function(x, y, scale) {
