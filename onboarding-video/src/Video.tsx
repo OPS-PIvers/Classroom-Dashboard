@@ -15,6 +15,33 @@ const COLORS = {
     TEXT_MUTED: '#94a3b8',
 } as const;
 
+// Video duration configuration (frames)
+const DEMO_DURATIONS: Record<string, number> = {
+    'clock': 360,
+    'timer': 420,
+    'traffic': 360,
+    'dice': 360,
+    'qr': 360,
+    'text': 360,
+    'checklist': 360,
+    'timetable': 360,
+    'embed': 360,
+    'random': 450, // Longer for spin
+    'sound': 420,
+    'drawing': 450, // Longer for drawing
+    'poll': 390,
+    'backgrounds': 360,
+    'save_load': 390,
+    'teacher_session': 420,
+    'student_join': 420
+};
+
+const DEFAULT_DEMO_DURATION = 360; // 12 seconds
+
+const HEADER_DURATION = 60; // 2 seconds
+const INTRO_DURATION = 120; // 4 seconds
+const OUTRO_DURATION = 150; // 5 seconds
+
 // Stylized cursor component
 const StylizedCursor: React.FC<{
     x: number;
@@ -140,6 +167,7 @@ const VideoDemo: React.FC<{
     title: string;
     description: string;
     accentColor?: string;
+    duration: number;
     panZoom?: {
         startScale?: number;
         endScale?: number;
@@ -154,11 +182,12 @@ const VideoDemo: React.FC<{
     title,
     description,
     accentColor = COLORS.TIME_MANAGEMENT,
+    duration,
     panZoom = {},
     cursorPath = []
 }) => {
     const frame = useCurrentFrame();
-    const { fps, durationInFrames } = useVideoConfig();
+    const { fps } = useVideoConfig();
 
     const {
         startScale = 1,
@@ -170,9 +199,9 @@ const VideoDemo: React.FC<{
     } = panZoom;
 
     // Pan/zoom interpolation
-    const scale = interpolate(frame, [0, durationInFrames], [startScale, endScale], { extrapolateRight: 'clamp' });
-    const translateX = interpolate(frame, [0, durationInFrames], [startX - 50, endX - 50], { extrapolateRight: 'clamp' });
-    const translateY = interpolate(frame, [0, durationInFrames], [startY - 50, endY - 50], { extrapolateRight: 'clamp' });
+    const scale = interpolate(frame, [0, duration], [startScale, endScale], { extrapolateRight: 'clamp' });
+    const translateX = interpolate(frame, [0, duration], [startX - 50, endX - 50], { extrapolateRight: 'clamp' });
+    const translateY = interpolate(frame, [0, duration], [startY - 50, endY - 50], { extrapolateRight: 'clamp' });
 
     // Title animations
     const titleSlide = spring({ frame, fps, from: -30, to: 0, config: { damping: 15 } });
@@ -185,7 +214,7 @@ const VideoDemo: React.FC<{
     const videoOpacity = interpolate(frame, [5, 20], [0, 1], { extrapolateRight: 'clamp' });
 
     // Fade out at end
-    const fadeOut = interpolate(frame, [durationInFrames - 15, durationInFrames], [1, 0], { extrapolateLeft: 'clamp' });
+    const fadeOut = interpolate(frame, [duration - 15, duration], [1, 0], { extrapolateLeft: 'clamp' });
 
     // Find current cursor position
     let cursorX = 0;
@@ -507,18 +536,14 @@ const EndScreen: React.FC = () => {
     );
 };
 
-// Video duration per demo (in frames at 30fps)
-const DEMO_DURATION = 180; // 6 seconds per demo
-const HEADER_DURATION = 60; // 2 seconds per category header
-const INTRO_DURATION = 120; // 4 seconds intro
-const OUTRO_DURATION = 150; // 5 seconds outro
-
 export const OnboardingVideo: React.FC = () => {
     const frame = useCurrentFrame();
     const { durationInFrames } = useVideoConfig();
     const progress = frame / durationInFrames;
 
     let currentFrame = 0;
+
+    const getDur = (id: string) => DEMO_DURATIONS[id] || DEFAULT_DEMO_DURATION;
 
     return (
         <AbsoluteFill style={{ backgroundColor: 'white' }}>
@@ -539,38 +564,41 @@ export const OnboardingVideo: React.FC = () => {
             </Sequence>
             {currentFrame += HEADER_DURATION}
 
-            <Sequence from={currentFrame} durationInFrames={DEMO_DURATION}>
+            <Sequence from={currentFrame} durationInFrames={getDur('clock')}>
                 <VideoDemo
                     src="clock.webm"
                     title="Clock Widget"
                     description="Display time in analog or digital format"
                     accentColor={COLORS.TIME_MANAGEMENT}
                     panZoom={{ startScale: 1, endScale: 1.08, startY: 45, endY: 55 }}
+                    duration={getDur('clock')}
                 />
             </Sequence>
-            {currentFrame += DEMO_DURATION}
+            {currentFrame += getDur('clock')}
 
-            <Sequence from={currentFrame} durationInFrames={DEMO_DURATION}>
+            <Sequence from={currentFrame} durationInFrames={getDur('timer')}>
                 <VideoDemo
                     src="timer.webm"
                     title="Timer Widget"
                     description="Countdown timer for activities and transitions"
                     accentColor={COLORS.TIME_MANAGEMENT}
                     panZoom={{ startScale: 1.05, endScale: 1, startX: 45, endX: 55 }}
+                    duration={getDur('timer')}
                 />
             </Sequence>
-            {currentFrame += DEMO_DURATION}
+            {currentFrame += getDur('timer')}
 
-            <Sequence from={currentFrame} durationInFrames={DEMO_DURATION}>
+            <Sequence from={currentFrame} durationInFrames={getDur('timetable')}>
                 <VideoDemo
                     src="timetable.webm"
                     title="Timetable Widget"
                     description="Display your class schedule at a glance"
                     accentColor={COLORS.TIME_MANAGEMENT}
                     panZoom={{ startScale: 1, endScale: 1.06 }}
+                    duration={getDur('timetable')}
                 />
             </Sequence>
-            {currentFrame += DEMO_DURATION}
+            {currentFrame += getDur('timetable')}
 
             {/* Classroom Management Category */}
             <Sequence from={currentFrame} durationInFrames={HEADER_DURATION}>
@@ -583,38 +611,41 @@ export const OnboardingVideo: React.FC = () => {
             </Sequence>
             {currentFrame += HEADER_DURATION}
 
-            <Sequence from={currentFrame} durationInFrames={DEMO_DURATION}>
+            <Sequence from={currentFrame} durationInFrames={getDur('traffic')}>
                 <VideoDemo
                     src="traffic.webm"
                     title="Traffic Light Widget"
                     description="Visual indicator for noise levels and behavior"
                     accentColor={COLORS.CLASSROOM_MANAGEMENT}
                     panZoom={{ startScale: 1.02, endScale: 1.08, startY: 48, endY: 52 }}
+                    duration={getDur('traffic')}
                 />
             </Sequence>
-            {currentFrame += DEMO_DURATION}
+            {currentFrame += getDur('traffic')}
 
-            <Sequence from={currentFrame} durationInFrames={DEMO_DURATION}>
+            <Sequence from={currentFrame} durationInFrames={getDur('sound')}>
                 <VideoDemo
                     src="sound.webm"
                     title="Sound Level Monitor"
                     description="Real-time classroom noise detection"
                     accentColor={COLORS.CLASSROOM_MANAGEMENT}
                     panZoom={{ startScale: 1, endScale: 1.05 }}
+                    duration={getDur('sound')}
                 />
             </Sequence>
-            {currentFrame += DEMO_DURATION}
+            {currentFrame += getDur('sound')}
 
-            <Sequence from={currentFrame} durationInFrames={DEMO_DURATION}>
+            <Sequence from={currentFrame} durationInFrames={getDur('checklist')}>
                 <VideoDemo
                     src="checklist.webm"
                     title="Checklist Widget"
                     description="Track tasks and daily routines"
                     accentColor={COLORS.CLASSROOM_MANAGEMENT}
                     panZoom={{ startScale: 1.04, endScale: 1, startX: 52, endX: 48 }}
+                    duration={getDur('checklist')}
                 />
             </Sequence>
-            {currentFrame += DEMO_DURATION}
+            {currentFrame += getDur('checklist')}
 
             {/* Interactive Tools Category */}
             <Sequence from={currentFrame} durationInFrames={HEADER_DURATION}>
@@ -627,38 +658,41 @@ export const OnboardingVideo: React.FC = () => {
             </Sequence>
             {currentFrame += HEADER_DURATION}
 
-            <Sequence from={currentFrame} durationInFrames={DEMO_DURATION}>
+            <Sequence from={currentFrame} durationInFrames={getDur('random')}>
                 <VideoDemo
                     src="random.webm"
                     title="Random Name Picker"
                     description="Fairly select students for activities"
                     accentColor={COLORS.INTERACTIVE_TOOLS}
                     panZoom={{ startScale: 1, endScale: 1.07, startY: 47, endY: 53 }}
+                    duration={getDur('random')}
                 />
             </Sequence>
-            {currentFrame += DEMO_DURATION}
+            {currentFrame += getDur('random')}
 
-            <Sequence from={currentFrame} durationInFrames={DEMO_DURATION}>
+            <Sequence from={currentFrame} durationInFrames={getDur('dice')}>
                 <VideoDemo
                     src="dice.webm"
                     title="Dice Widget"
                     description="Roll dice for games and activities"
                     accentColor={COLORS.INTERACTIVE_TOOLS}
                     panZoom={{ startScale: 1.03, endScale: 1.08 }}
+                    duration={getDur('dice')}
                 />
             </Sequence>
-            {currentFrame += DEMO_DURATION}
+            {currentFrame += getDur('dice')}
 
-            <Sequence from={currentFrame} durationInFrames={DEMO_DURATION}>
+            <Sequence from={currentFrame} durationInFrames={getDur('poll')}>
                 <VideoDemo
                     src="poll.webm"
                     title="Poll Widget"
                     description="Quick student voting and surveys"
                     accentColor={COLORS.INTERACTIVE_TOOLS}
                     panZoom={{ startScale: 1, endScale: 1.06, startX: 48, endX: 52 }}
+                    duration={getDur('poll')}
                 />
             </Sequence>
-            {currentFrame += DEMO_DURATION}
+            {currentFrame += getDur('poll')}
 
             {/* Content & Media Category */}
             <Sequence from={currentFrame} durationInFrames={HEADER_DURATION}>
@@ -671,49 +705,53 @@ export const OnboardingVideo: React.FC = () => {
             </Sequence>
             {currentFrame += HEADER_DURATION}
 
-            <Sequence from={currentFrame} durationInFrames={DEMO_DURATION}>
+            <Sequence from={currentFrame} durationInFrames={getDur('text')}>
                 <VideoDemo
                     src="text.webm"
                     title="Text Widget"
                     description="Display instructions and announcements"
                     accentColor={COLORS.CONTENT_MEDIA}
                     panZoom={{ startScale: 1.02, endScale: 1.07, startY: 46, endY: 54 }}
+                    duration={getDur('text')}
                 />
             </Sequence>
-            {currentFrame += DEMO_DURATION}
+            {currentFrame += getDur('text')}
 
-            <Sequence from={currentFrame} durationInFrames={DEMO_DURATION}>
+            <Sequence from={currentFrame} durationInFrames={getDur('drawing')}>
                 <VideoDemo
                     src="drawing.webm"
                     title="Drawing Widget"
                     description="Whiteboard for sketches and diagrams"
                     accentColor={COLORS.CONTENT_MEDIA}
                     panZoom={{ startScale: 1, endScale: 1.05 }}
+                    duration={getDur('drawing')}
                 />
             </Sequence>
-            {currentFrame += DEMO_DURATION}
+            {currentFrame += getDur('drawing')}
 
-            <Sequence from={currentFrame} durationInFrames={DEMO_DURATION}>
+            <Sequence from={currentFrame} durationInFrames={getDur('embed')}>
                 <VideoDemo
                     src="embed.webm"
                     title="Embed Widget"
                     description="Embed websites and external content"
                     accentColor={COLORS.CONTENT_MEDIA}
                     panZoom={{ startScale: 1.04, endScale: 1, startX: 53, endX: 47 }}
+                    duration={getDur('embed')}
                 />
             </Sequence>
-            {currentFrame += DEMO_DURATION}
+            {currentFrame += getDur('embed')}
 
-            <Sequence from={currentFrame} durationInFrames={DEMO_DURATION}>
+            <Sequence from={currentFrame} durationInFrames={getDur('qr')}>
                 <VideoDemo
                     src="qr.webm"
                     title="QR Code Widget"
                     description="Share links instantly with students"
                     accentColor={COLORS.CONTENT_MEDIA}
                     panZoom={{ startScale: 1, endScale: 1.06 }}
+                    duration={getDur('qr')}
                 />
             </Sequence>
-            {currentFrame += DEMO_DURATION}
+            {currentFrame += getDur('qr')}
 
             {/* Additional Features */}
             <Sequence from={currentFrame} durationInFrames={HEADER_DURATION}>
@@ -726,38 +764,41 @@ export const OnboardingVideo: React.FC = () => {
             </Sequence>
             {currentFrame += HEADER_DURATION}
 
-            <Sequence from={currentFrame} durationInFrames={DEMO_DURATION}>
+            <Sequence from={currentFrame} durationInFrames={getDur('backgrounds')}>
                 <VideoDemo
                     src="backgrounds.webm"
                     title="Custom Backgrounds"
                     description="Personalize your dashboard appearance"
                     accentColor={COLORS.PRIMARY_PURPLE}
                     panZoom={{ startScale: 1, endScale: 1.05 }}
+                    duration={getDur('backgrounds')}
                 />
             </Sequence>
-            {currentFrame += DEMO_DURATION}
+            {currentFrame += getDur('backgrounds')}
 
-            <Sequence from={currentFrame} durationInFrames={DEMO_DURATION}>
+            <Sequence from={currentFrame} durationInFrames={getDur('save_load')}>
                 <VideoDemo
                     src="save_load.webm"
                     title="Save & Load"
                     description="Save your layouts and restore them anytime"
                     accentColor={COLORS.PRIMARY_PURPLE}
                     panZoom={{ startScale: 1.02, endScale: 1.07 }}
+                    duration={getDur('save_load')}
                 />
             </Sequence>
-            {currentFrame += DEMO_DURATION}
+            {currentFrame += getDur('save_load')}
 
-            <Sequence from={currentFrame} durationInFrames={DEMO_DURATION}>
+            <Sequence from={currentFrame} durationInFrames={getDur('teacher_session')}>
                 <VideoDemo
                     src="teacher_session.webm"
                     title="Live Sessions"
                     description="Share your dashboard with students in real-time"
                     accentColor={COLORS.PRIMARY_PURPLE}
                     panZoom={{ startScale: 1, endScale: 1.06, startY: 48, endY: 52 }}
+                    duration={getDur('teacher_session')}
                 />
             </Sequence>
-            {currentFrame += DEMO_DURATION}
+            {currentFrame += getDur('teacher_session')}
 
             {/* End Screen */}
             <Sequence from={currentFrame} durationInFrames={OUTRO_DURATION}>
