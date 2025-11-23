@@ -507,11 +507,30 @@ const EndScreen: React.FC = () => {
     );
 };
 
-// Video duration per demo (in frames at 30fps)
-const DEMO_DURATION = 180; // 6 seconds per demo
+// Video duration constants (in frames at 30fps)
 const HEADER_DURATION = 60; // 2 seconds per category header
 const INTRO_DURATION = 120; // 4 seconds intro
 const OUTRO_DURATION = 150; // 5 seconds outro
+
+// Individual demo durations based on actual video lengths
+const DEMO_DURATIONS = {
+    clock: 450,          // 15s
+    timer: 525,          // 17.5s
+    timetable: 375,      // 12.5s
+    traffic: 270,        // 9s
+    sound: 285,          // 9.5s
+    checklist: 390,      // 13s
+    random: 390,         // 13s
+    dice: 450,           // 15s
+    poll: 540,           // 18s
+    text: 405,           // 13.5s
+    drawing: 270,        // 9s
+    embed: 360,          // 12s
+    qr: 375,             // 12.5s
+    backgrounds: 240,    // 8s
+    save_load: 270,      // 9s
+    teacher_session: 345 // 11.5s
+} as const;
 
 export const OnboardingVideo: React.FC = () => {
     const frame = useCurrentFrame();
@@ -539,7 +558,7 @@ export const OnboardingVideo: React.FC = () => {
             </Sequence>
             {currentFrame += HEADER_DURATION}
 
-            <Sequence from={currentFrame} durationInFrames={DEMO_DURATION}>
+            <Sequence from={currentFrame} durationInFrames={DEMO_DURATIONS.clock}>
                 <VideoDemo
                     src="clock.webm"
                     title="Clock Widget"
@@ -548,9 +567,9 @@ export const OnboardingVideo: React.FC = () => {
                     panZoom={{ startScale: 1, endScale: 1.08, startY: 45, endY: 55 }}
                 />
             </Sequence>
-            {currentFrame += DEMO_DURATION}
+            {currentFrame += DEMO_DURATIONS.clock}
 
-            <Sequence from={currentFrame} durationInFrames={DEMO_DURATION}>
+            <Sequence from={currentFrame} durationInFrames={DEMO_DURATIONS.timer}>
                 <VideoDemo
                     src="timer.webm"
                     title="Timer Widget"
@@ -559,9 +578,9 @@ export const OnboardingVideo: React.FC = () => {
                     panZoom={{ startScale: 1.05, endScale: 1, startX: 45, endX: 55 }}
                 />
             </Sequence>
-            {currentFrame += DEMO_DURATION}
+            {currentFrame += DEMO_DURATIONS.timer}
 
-            <Sequence from={currentFrame} durationInFrames={DEMO_DURATION}>
+            <Sequence from={currentFrame} durationInFrames={DEMO_DURATIONS.timetable}>
                 <VideoDemo
                     src="timetable.webm"
                     title="Timetable Widget"
@@ -570,7 +589,7 @@ export const OnboardingVideo: React.FC = () => {
                     panZoom={{ startScale: 1, endScale: 1.06 }}
                 />
             </Sequence>
-            {currentFrame += DEMO_DURATION}
+            {currentFrame += DEMO_DURATIONS.timetable}
 
             {/* Classroom Management Category */}
             <Sequence from={currentFrame} durationInFrames={HEADER_DURATION}>
@@ -583,7 +602,7 @@ export const OnboardingVideo: React.FC = () => {
             </Sequence>
             {currentFrame += HEADER_DURATION}
 
-            <Sequence from={currentFrame} durationInFrames={DEMO_DURATION}>
+            <Sequence from={currentFrame} durationInFrames={DEMO_DURATIONS.traffic}>
                 <VideoDemo
                     src="traffic.webm"
                     title="Traffic Light Widget"
@@ -592,9 +611,9 @@ export const OnboardingVideo: React.FC = () => {
                     panZoom={{ startScale: 1.02, endScale: 1.08, startY: 48, endY: 52 }}
                 />
             </Sequence>
-            {currentFrame += DEMO_DURATION}
+            {currentFrame += DEMO_DURATIONS.traffic}
 
-            <Sequence from={currentFrame} durationInFrames={DEMO_DURATION}>
+            <Sequence from={currentFrame} durationInFrames={DEMO_DURATIONS.sound}>
                 <VideoDemo
                     src="sound.webm"
                     title="Sound Level Monitor"
@@ -603,9 +622,9 @@ export const OnboardingVideo: React.FC = () => {
                     panZoom={{ startScale: 1, endScale: 1.05 }}
                 />
             </Sequence>
-            {currentFrame += DEMO_DURATION}
+            {currentFrame += DEMO_DURATIONS.sound}
 
-            <Sequence from={currentFrame} durationInFrames={DEMO_DURATION}>
+            <Sequence from={currentFrame} durationInFrames={DEMO_DURATIONS.checklist}>
                 <VideoDemo
                     src="checklist.webm"
                     title="Checklist Widget"
@@ -614,7 +633,7 @@ export const OnboardingVideo: React.FC = () => {
                     panZoom={{ startScale: 1.04, endScale: 1, startX: 52, endX: 48 }}
                 />
             </Sequence>
-            {currentFrame += DEMO_DURATION}
+            {currentFrame += DEMO_DURATIONS.checklist}
 
             {/* Interactive Tools Category */}
             <Sequence from={currentFrame} durationInFrames={HEADER_DURATION}>
@@ -627,7 +646,7 @@ export const OnboardingVideo: React.FC = () => {
             </Sequence>
             {currentFrame += HEADER_DURATION}
 
-            <Sequence from={currentFrame} durationInFrames={DEMO_DURATION}>
+            <Sequence from={currentFrame} durationInFrames={DEMO_DURATIONS.random}>
                 <VideoDemo
                     src="random.webm"
                     title="Random Name Picker"
@@ -636,9 +655,9 @@ export const OnboardingVideo: React.FC = () => {
                     panZoom={{ startScale: 1, endScale: 1.07, startY: 47, endY: 53 }}
                 />
             </Sequence>
-            {currentFrame += DEMO_DURATION}
+            {currentFrame += DEMO_DURATIONS.random}
 
-            <Sequence from={currentFrame} durationInFrames={DEMO_DURATION}>
+            <Sequence from={currentFrame} durationInFrames={DEMO_DURATIONS.dice}>
                 <VideoDemo
                     src="dice.webm"
                     title="Dice Widget"
@@ -647,9 +666,9 @@ export const OnboardingVideo: React.FC = () => {
                     panZoom={{ startScale: 1.03, endScale: 1.08 }}
                 />
             </Sequence>
-            {currentFrame += DEMO_DURATION}
+            {currentFrame += DEMO_DURATIONS.dice}
 
-            <Sequence from={currentFrame} durationInFrames={DEMO_DURATION}>
+            <Sequence from={currentFrame} durationInFrames={DEMO_DURATIONS.poll}>
                 <VideoDemo
                     src="poll.webm"
                     title="Poll Widget"
@@ -658,7 +677,7 @@ export const OnboardingVideo: React.FC = () => {
                     panZoom={{ startScale: 1, endScale: 1.06, startX: 48, endX: 52 }}
                 />
             </Sequence>
-            {currentFrame += DEMO_DURATION}
+            {currentFrame += DEMO_DURATIONS.poll}
 
             {/* Content & Media Category */}
             <Sequence from={currentFrame} durationInFrames={HEADER_DURATION}>
@@ -671,7 +690,7 @@ export const OnboardingVideo: React.FC = () => {
             </Sequence>
             {currentFrame += HEADER_DURATION}
 
-            <Sequence from={currentFrame} durationInFrames={DEMO_DURATION}>
+            <Sequence from={currentFrame} durationInFrames={DEMO_DURATIONS.text}>
                 <VideoDemo
                     src="text.webm"
                     title="Text Widget"
@@ -680,9 +699,9 @@ export const OnboardingVideo: React.FC = () => {
                     panZoom={{ startScale: 1.02, endScale: 1.07, startY: 46, endY: 54 }}
                 />
             </Sequence>
-            {currentFrame += DEMO_DURATION}
+            {currentFrame += DEMO_DURATIONS.text}
 
-            <Sequence from={currentFrame} durationInFrames={DEMO_DURATION}>
+            <Sequence from={currentFrame} durationInFrames={DEMO_DURATIONS.drawing}>
                 <VideoDemo
                     src="drawing.webm"
                     title="Drawing Widget"
@@ -691,9 +710,9 @@ export const OnboardingVideo: React.FC = () => {
                     panZoom={{ startScale: 1, endScale: 1.05 }}
                 />
             </Sequence>
-            {currentFrame += DEMO_DURATION}
+            {currentFrame += DEMO_DURATIONS.drawing}
 
-            <Sequence from={currentFrame} durationInFrames={DEMO_DURATION}>
+            <Sequence from={currentFrame} durationInFrames={DEMO_DURATIONS.embed}>
                 <VideoDemo
                     src="embed.webm"
                     title="Embed Widget"
@@ -702,9 +721,9 @@ export const OnboardingVideo: React.FC = () => {
                     panZoom={{ startScale: 1.04, endScale: 1, startX: 53, endX: 47 }}
                 />
             </Sequence>
-            {currentFrame += DEMO_DURATION}
+            {currentFrame += DEMO_DURATIONS.embed}
 
-            <Sequence from={currentFrame} durationInFrames={DEMO_DURATION}>
+            <Sequence from={currentFrame} durationInFrames={DEMO_DURATIONS.qr}>
                 <VideoDemo
                     src="qr.webm"
                     title="QR Code Widget"
@@ -713,7 +732,7 @@ export const OnboardingVideo: React.FC = () => {
                     panZoom={{ startScale: 1, endScale: 1.06 }}
                 />
             </Sequence>
-            {currentFrame += DEMO_DURATION}
+            {currentFrame += DEMO_DURATIONS.qr}
 
             {/* Additional Features */}
             <Sequence from={currentFrame} durationInFrames={HEADER_DURATION}>
@@ -726,7 +745,7 @@ export const OnboardingVideo: React.FC = () => {
             </Sequence>
             {currentFrame += HEADER_DURATION}
 
-            <Sequence from={currentFrame} durationInFrames={DEMO_DURATION}>
+            <Sequence from={currentFrame} durationInFrames={DEMO_DURATIONS.backgrounds}>
                 <VideoDemo
                     src="backgrounds.webm"
                     title="Custom Backgrounds"
@@ -735,9 +754,9 @@ export const OnboardingVideo: React.FC = () => {
                     panZoom={{ startScale: 1, endScale: 1.05 }}
                 />
             </Sequence>
-            {currentFrame += DEMO_DURATION}
+            {currentFrame += DEMO_DURATIONS.backgrounds}
 
-            <Sequence from={currentFrame} durationInFrames={DEMO_DURATION}>
+            <Sequence from={currentFrame} durationInFrames={DEMO_DURATIONS.save_load}>
                 <VideoDemo
                     src="save_load.webm"
                     title="Save & Load"
@@ -746,9 +765,9 @@ export const OnboardingVideo: React.FC = () => {
                     panZoom={{ startScale: 1.02, endScale: 1.07 }}
                 />
             </Sequence>
-            {currentFrame += DEMO_DURATION}
+            {currentFrame += DEMO_DURATIONS.save_load}
 
-            <Sequence from={currentFrame} durationInFrames={DEMO_DURATION}>
+            <Sequence from={currentFrame} durationInFrames={DEMO_DURATIONS.teacher_session}>
                 <VideoDemo
                     src="teacher_session.webm"
                     title="Live Sessions"
@@ -757,7 +776,7 @@ export const OnboardingVideo: React.FC = () => {
                     panZoom={{ startScale: 1, endScale: 1.06, startY: 48, endY: 52 }}
                 />
             </Sequence>
-            {currentFrame += DEMO_DURATION}
+            {currentFrame += DEMO_DURATIONS.teacher_session}
 
             {/* End Screen */}
             <Sequence from={currentFrame} durationInFrames={OUTRO_DURATION}>
