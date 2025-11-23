@@ -417,29 +417,73 @@ def scenario_random(d):
     d.reset_camera()
 
 def scenario_sound(d):
-    """Demonstrates Sound widget: mocks mic visual."""
+    """Demonstrates Sound widget with realistic sound level animation."""
+    # Mock getUserMedia before spawning widget
+    d.page.evaluate("""
+        // Create a mock AudioContext and AnalyserNode
+        const mockAnalyser = {
+            fftSize: 256,
+            frequencyBinCount: 128,
+            getByteFrequencyData: function(array) {
+                // Fill with simulated frequency data
+                for (let i = 0; i < array.length; i++) {
+                    array[i] = Math.floor(Math.random() * window.__mockSoundLevel || 0);
+                }
+            }
+        };
+
+        const mockAudioContext = {
+            createAnalyser: () => mockAnalyser,
+            createMediaStreamSource: () => ({ connect: () => {} })
+        };
+
+        window.AudioContext = function() { return mockAudioContext; };
+        window.webkitAudioContext = window.AudioContext;
+
+        navigator.mediaDevices.getUserMedia = () => Promise.resolve(new MediaStream());
+        window.__mockSoundLevel = 0;
+    """)
+
     d.page.evaluate("spawnWidget('sound')")
     w = d.page.locator(".widget", has_text="Noise Level")
     w.wait_for()
     d.zoom_to_widget(w)
 
-    # Mock getUserMedia BEFORE clicking
-    d.page.evaluate("navigator.mediaDevices.getUserMedia = () => Promise.resolve(new MediaStream())")
-
     d.click(w.locator(".btn-mic-start"))
+    d.page.wait_for_timeout(500)
 
-    # Inject interval for visual
+    # Animate sound levels with realistic patterns
     d.page.evaluate("""
         const bar = document.querySelector('.mic-bar');
-        if(bar) {
+        if (bar) {
+            let time = 0;
             window.__micBarInterval = setInterval(() => {
-                let h = Math.random() * 80 + 10;
-                bar.style.height = h + '%';
+                time += 0.1;
+                // Create realistic sound pattern: quiet -> loud -> medium -> quiet
+                let level;
+                if (time < 1) {
+                    // Start quiet
+                    level = 10 + Math.random() * 15;
+                } else if (time < 2.5) {
+                    // Rising to loud (simulating talking)
+                    level = 30 + Math.sin(time * 3) * 20 + Math.random() * 25;
+                } else if (time < 4) {
+                    // Sustained medium-high (active classroom)
+                    level = 50 + Math.sin(time * 5) * 15 + Math.random() * 20;
+                } else if (time < 5.5) {
+                    // Gradually quieting down
+                    level = 40 - (time - 4) * 15 + Math.random() * 15;
+                } else {
+                    // Back to quiet
+                    level = 10 + Math.random() * 10;
+                }
+                bar.style.height = Math.min(95, Math.max(5, level)) + '%';
+                bar.style.transition = 'height 0.1s ease-out';
             }, 100);
         }
     """)
 
-    d.page.wait_for_timeout(3000)
+    d.page.wait_for_timeout(6000)
 
     # Clear interval
     d.page.evaluate("window.__micBarInterval && clearInterval(window.__micBarInterval)")
@@ -490,42 +534,86 @@ def scenario_poll(d):
 
 def scenario_backgrounds(d):
     """Demonstrates switching backgrounds."""
+    # Wait for page to be fully ready
+    d.page.wait_for_timeout(500)
+
     d.click(d.page.locator("#btn-bg-menu"))
+    d.page.wait_for_timeout(300)
     d.click(d.page.locator(".bg-opt").nth(1))
+    d.page.wait_for_timeout(800)
+
     d.click(d.page.locator("#btn-bg-menu"))
+    d.page.wait_for_timeout(300)
     d.click(d.page.locator(".bg-opt").nth(2))
+    d.page.wait_for_timeout(800)
+
     d.click(d.page.locator("#btn-bg-menu"))
+    d.page.wait_for_timeout(300)
     d.click(d.page.locator(".bg-opt").last)
+    d.page.wait_for_timeout(500)
 
 def scenario_save_load(d):
     """Demonstrates Save/Load with Dialog handling."""
+    # Wait for page to be fully ready
+    d.page.wait_for_timeout(500)
+
+    # Spawn and wait for widget to appear
     d.page.evaluate("spawnWidget('clock')")
+    w = d.page.locator(".widget", has_text="Clock")
+    w.wait_for()
+    d.page.wait_for_timeout(500)
+
+    # Save dashboard
     d.page.once("dialog", lambda dialog: dialog.accept("Demo Dashboard"))
     d.click(d.page.locator("#btn-save"))
     d.page.wait_for_timeout(1000)
+
+    # Delete the widget so we have clean view for dashboards panel
+    d.page.evaluate("document.querySelector('.widget').remove()")
+    d.page.wait_for_timeout(300)
+
+    # Open My Dashboards
     d.click(d.page.locator("#btn-my-dashboards"))
+    d.page.wait_for_timeout(500)
+
+    # Rename dashboard
     d.click(d.page.locator(".btn-edit").first)
     d.fill(d.page.locator(".dashboard-rename-input").first, "Renamed")
     d.press(d.page.locator(".dashboard-rename-input").first, "Enter")
+    d.page.wait_for_timeout(500)
+
+    # Close panel
     d.click(d.page.locator("#btn-my-dashboards"))
 
 def scenario_teacher_session(d):
     """Demonstrates Live Session controls."""
+    # Wait for page to be fully ready
+    d.page.wait_for_timeout(500)
+
     d.click(d.page.locator("#btn-start-session"))
+    d.page.wait_for_timeout(300)
     d.click(d.page.locator("#btn-menu-start-session"))
-    d.page.wait_for_timeout(1000)
+    d.page.wait_for_timeout(1200)
+
+    # Show the session code
     d.click(d.page.locator("#btn-copy-link"))
-
     d.page.wait_for_timeout(1000)
-    # Force open menu if toggle fails (robustness for demo recording)
+
+    # Pause session
     d.page.evaluate("document.getElementById('session-menu').classList.remove('hidden')")
+    d.page.wait_for_timeout(200)
     d.click(d.page.locator("#btn-menu-pause"))
+    d.page.wait_for_timeout(800)
 
-    d.page.wait_for_timeout(1000)
+    # Resume session
     d.page.evaluate("document.getElementById('session-menu').classList.remove('hidden')")
+    d.page.wait_for_timeout(200)
     d.click(d.page.locator("#btn-menu-resume"))
+    d.page.wait_for_timeout(800)
 
+    # End session
     d.click(d.page.locator("#btn-end-session"))
+    d.page.wait_for_timeout(500)
 
 def scenario_student_join(d):
     """Demonstrates Student View via simulated Join."""

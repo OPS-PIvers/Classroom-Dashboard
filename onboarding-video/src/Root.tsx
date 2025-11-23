@@ -8,7 +8,7 @@ export const RemotionVideo: React.FC = () => {
       <Composition
         id="OnboardingVideo"
         component={OnboardingVideo}
-        durationInFrames={3630} // 121 seconds at 30fps (17 demos + headers + intro/outro)
+        durationInFrames={6510} // 217 seconds at 30fps (16 demos with full durations + headers + intro/outro)
         fps={30}
         width={1920}
         height={1080}
