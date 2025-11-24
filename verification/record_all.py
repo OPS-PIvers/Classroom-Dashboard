@@ -125,17 +125,29 @@ def mock_google_script(page):
 def inject_cinematic_styles(page):
     """Injects CSS/JS for custom cursor and camera animations."""
     page.evaluate("""
-        // Inject Cursor
+        // Inject larger, more prominent Cursor
         const cursor = document.createElement('div');
         cursor.className = 'cinematic-cursor';
-        cursor.innerHTML = `<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M6 2L26 16L16 18L14 28L6 2Z" fill="black" stroke="white" stroke-width="2" stroke-linejoin="round"/>
+        cursor.innerHTML = `<svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <filter id="cursor-shadow" x="-50%" y="-50%" width="200%" height="200%">
+                <feDropShadow dx="2" dy="4" stdDeviation="3" flood-color="rgba(0,0,0,0.4)"/>
+            </filter>
+            <path d="M8 3L40 24L24 27L21 42L8 3Z" fill="white" stroke="#1e293b" stroke-width="2.5" stroke-linejoin="round" filter="url(#cursor-shadow)"/>
         </svg>`;
         Object.assign(cursor.style, {
             position: 'fixed', top: '0', left: '0', pointerEvents: 'none', zIndex: '100000',
-            transition: 'transform 0.1s cubic-bezier(0.2, 0, 0.2, 1)', transformOrigin: 'top left'
+            transition: 'transform 0.08s cubic-bezier(0.2, 0, 0.2, 1)', transformOrigin: 'top left'
         });
         document.body.appendChild(cursor);
+
+        // Click ripple effect container
+        const rippleContainer = document.createElement('div');
+        rippleContainer.id = 'click-ripples';
+        Object.assign(rippleContainer.style, {
+            position: 'fixed', top: '0', left: '0', width: '100%', height: '100%',
+            pointerEvents: 'none', zIndex: '99999'
+        });
+        document.body.appendChild(rippleContainer);
 
         // Track mouse
         let mouseX = 0, mouseY = 0;
@@ -146,18 +158,50 @@ def inject_cinematic_styles(page):
         });
 
         document.addEventListener('mousedown', () => {
-            cursor.innerHTML = `<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M6 2L26 16L16 18L14 28L6 2Z" fill="#4f46e5" stroke="white" stroke-width="2" stroke-linejoin="round"/>
+            // Change cursor color on click
+            cursor.innerHTML = `<svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <filter id="cursor-shadow" x="-50%" y="-50%" width="200%" height="200%">
+                    <feDropShadow dx="2" dy="4" stdDeviation="3" flood-color="rgba(0,0,0,0.4)"/>
+                </filter>
+                <path d="M8 3L40 24L24 27L21 42L8 3Z" fill="#6366f1" stroke="white" stroke-width="2.5" stroke-linejoin="round" filter="url(#cursor-shadow)"/>
             </svg>`;
-            cursor.style.transform = `translate(${mouseX}px, ${mouseY}px) scale(0.8)`;
+            cursor.style.transform = `translate(${mouseX}px, ${mouseY}px) scale(0.85)`;
+
+            // Create expanding ripple effect
+            const ripple = document.createElement('div');
+            Object.assign(ripple.style, {
+                position: 'absolute',
+                left: (mouseX - 30) + 'px',
+                top: (mouseY - 30) + 'px',
+                width: '60px',
+                height: '60px',
+                borderRadius: '50%',
+                border: '3px solid rgba(99, 102, 241, 0.6)',
+                animation: 'clickRipple 0.5s ease-out forwards'
+            });
+            rippleContainer.appendChild(ripple);
+            setTimeout(() => ripple.remove(), 500);
         });
 
         document.addEventListener('mouseup', () => {
-            cursor.innerHTML = `<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M6 2L26 16L16 18L14 28L6 2Z" fill="black" stroke="white" stroke-width="2" stroke-linejoin="round"/>
+            cursor.innerHTML = `<svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <filter id="cursor-shadow" x="-50%" y="-50%" width="200%" height="200%">
+                    <feDropShadow dx="2" dy="4" stdDeviation="3" flood-color="rgba(0,0,0,0.4)"/>
+                </filter>
+                <path d="M8 3L40 24L24 27L21 42L8 3Z" fill="white" stroke="#1e293b" stroke-width="2.5" stroke-linejoin="round" filter="url(#cursor-shadow)"/>
             </svg>`;
             cursor.style.transform = `translate(${mouseX}px, ${mouseY}px) scale(1)`;
         });
+
+        // Add ripple animation keyframes
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes clickRipple {
+                0% { transform: scale(0.5); opacity: 1; }
+                100% { transform: scale(2); opacity: 0; }
+            }
+        `;
+        document.head.appendChild(style);
 
         // Camera Control
         window.setCamera = function(x, y, scale) {
@@ -417,29 +461,73 @@ def scenario_random(d):
     d.reset_camera()
 
 def scenario_sound(d):
-    """Demonstrates Sound widget: mocks mic visual."""
+    """Demonstrates Sound widget with realistic sound level animation."""
+    # Mock getUserMedia before spawning widget
+    d.page.evaluate("""
+        // Create a mock AudioContext and AnalyserNode
+        const mockAnalyser = {
+            fftSize: 256,
+            frequencyBinCount: 128,
+            getByteFrequencyData: function(array) {
+                // Fill with simulated frequency data
+                for (let i = 0; i < array.length; i++) {
+                    array[i] = Math.floor(Math.random() * window.__mockSoundLevel || 0);
+                }
+            }
+        };
+
+        const mockAudioContext = {
+            createAnalyser: () => mockAnalyser,
+            createMediaStreamSource: () => ({ connect: () => {} })
+        };
+
+        window.AudioContext = function() { return mockAudioContext; };
+        window.webkitAudioContext = window.AudioContext;
+
+        navigator.mediaDevices.getUserMedia = () => Promise.resolve(new MediaStream());
+        window.__mockSoundLevel = 0;
+    """)
+
     d.page.evaluate("spawnWidget('sound')")
     w = d.page.locator(".widget", has_text="Noise Level")
     w.wait_for()
     d.zoom_to_widget(w)
 
-    # Mock getUserMedia BEFORE clicking
-    d.page.evaluate("navigator.mediaDevices.getUserMedia = () => Promise.resolve(new MediaStream())")
-
     d.click(w.locator(".btn-mic-start"))
+    d.page.wait_for_timeout(500)
 
-    # Inject interval for visual
+    # Animate sound levels with realistic patterns
     d.page.evaluate("""
         const bar = document.querySelector('.mic-bar');
-        if(bar) {
+        if (bar) {
+            let time = 0;
             window.__micBarInterval = setInterval(() => {
-                let h = Math.random() * 80 + 10;
-                bar.style.height = h + '%';
+                time += 0.1;
+                // Create realistic sound pattern: quiet -> loud -> medium -> quiet
+                let level;
+                if (time < 1) {
+                    // Start quiet
+                    level = 10 + Math.random() * 15;
+                } else if (time < 2.5) {
+                    // Rising to loud (simulating talking)
+                    level = 30 + Math.sin(time * 3) * 20 + Math.random() * 25;
+                } else if (time < 4) {
+                    // Sustained medium-high (active classroom)
+                    level = 50 + Math.sin(time * 5) * 15 + Math.random() * 20;
+                } else if (time < 5.5) {
+                    // Gradually quieting down
+                    level = 40 - (time - 4) * 15 + Math.random() * 15;
+                } else {
+                    // Back to quiet
+                    level = 10 + Math.random() * 10;
+                }
+                bar.style.height = Math.min(95, Math.max(5, level)) + '%';
+                bar.style.transition = 'height 0.1s ease-out';
             }, 100);
         }
     """)
 
-    d.page.wait_for_timeout(3000)
+    d.page.wait_for_timeout(6000)
 
     # Clear interval
     d.page.evaluate("window.__micBarInterval && clearInterval(window.__micBarInterval)")
@@ -490,42 +578,86 @@ def scenario_poll(d):
 
 def scenario_backgrounds(d):
     """Demonstrates switching backgrounds."""
+    # Wait for page to be fully ready
+    d.page.wait_for_timeout(500)
+
     d.click(d.page.locator("#btn-bg-menu"))
+    d.page.wait_for_timeout(300)
     d.click(d.page.locator(".bg-opt").nth(1))
+    d.page.wait_for_timeout(800)
+
     d.click(d.page.locator("#btn-bg-menu"))
+    d.page.wait_for_timeout(300)
     d.click(d.page.locator(".bg-opt").nth(2))
+    d.page.wait_for_timeout(800)
+
     d.click(d.page.locator("#btn-bg-menu"))
+    d.page.wait_for_timeout(300)
     d.click(d.page.locator(".bg-opt").last)
+    d.page.wait_for_timeout(500)
 
 def scenario_save_load(d):
     """Demonstrates Save/Load with Dialog handling."""
+    # Wait for page to be fully ready
+    d.page.wait_for_timeout(500)
+
+    # Spawn and wait for widget to appear
     d.page.evaluate("spawnWidget('clock')")
+    w = d.page.locator(".widget", has_text="Clock")
+    w.wait_for()
+    d.page.wait_for_timeout(500)
+
+    # Save dashboard
     d.page.once("dialog", lambda dialog: dialog.accept("Demo Dashboard"))
     d.click(d.page.locator("#btn-save"))
     d.page.wait_for_timeout(1000)
+
+    # Delete the widget so we have clean view for dashboards panel
+    d.page.evaluate("document.querySelector('.widget').remove()")
+    d.page.wait_for_timeout(300)
+
+    # Open My Dashboards
     d.click(d.page.locator("#btn-my-dashboards"))
+    d.page.wait_for_timeout(500)
+
+    # Rename dashboard
     d.click(d.page.locator(".btn-edit").first)
     d.fill(d.page.locator(".dashboard-rename-input").first, "Renamed")
     d.press(d.page.locator(".dashboard-rename-input").first, "Enter")
+    d.page.wait_for_timeout(500)
+
+    # Close panel
     d.click(d.page.locator("#btn-my-dashboards"))
 
 def scenario_teacher_session(d):
     """Demonstrates Live Session controls."""
+    # Wait for page to be fully ready
+    d.page.wait_for_timeout(500)
+
     d.click(d.page.locator("#btn-start-session"))
+    d.page.wait_for_timeout(300)
     d.click(d.page.locator("#btn-menu-start-session"))
-    d.page.wait_for_timeout(1000)
+    d.page.wait_for_timeout(1200)
+
+    # Show the session code
     d.click(d.page.locator("#btn-copy-link"))
-
     d.page.wait_for_timeout(1000)
-    # Force open menu if toggle fails (robustness for demo recording)
+
+    # Pause session
     d.page.evaluate("document.getElementById('session-menu').classList.remove('hidden')")
+    d.page.wait_for_timeout(200)
     d.click(d.page.locator("#btn-menu-pause"))
+    d.page.wait_for_timeout(800)
 
-    d.page.wait_for_timeout(1000)
+    # Resume session
     d.page.evaluate("document.getElementById('session-menu').classList.remove('hidden')")
+    d.page.wait_for_timeout(200)
     d.click(d.page.locator("#btn-menu-resume"))
+    d.page.wait_for_timeout(800)
 
+    # End session
     d.click(d.page.locator("#btn-end-session"))
+    d.page.wait_for_timeout(500)
 
 def scenario_student_join(d):
     """Demonstrates Student View via simulated Join."""
